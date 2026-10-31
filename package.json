@@ -1,0 +1,29 @@
+{
+  "name": "apex-dirt-rally",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "replay": "tsx replay_harness.ts",
+    "test:user-session": "tsx test_user_session.ts",
+    "test:reverse": "tsx test_reverse_regression.ts",
+    "test:browser-sync": "tsx test_browser_vs_headless.ts",
+    "test:v6": "tsx test_v6_integration.ts",
+    "measure:v4": "tsx measure_v4.ts",
+    "measure:v1": "tsx measure_v1.ts"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "lil-gui": "^0.20.0",
+    "three": "^0.174.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.174.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.3",
+    "vite": "^6.2.0"
+  }
+}

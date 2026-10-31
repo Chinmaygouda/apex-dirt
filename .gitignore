@@ -1,0 +1,35 @@
+# Dependencies & build outputs
+node_modules/
+dist/
+screenshots/
+
+# Video files (strictly do not commit any video from the Hardpack Rally reel)
+*.mp4
+*.mov
+
+# Reference footage and composite frames (strictly do not commit any reference material)
+reference_drift_frames.png
+ref_*.png
+composite_*.png
+*reference*frame*
+*reel*
+
+# Environment & secrets
+.env
+*.env
+.env.*
+*.pem
+*.key
+*.token
+
+# Logs & temp
+*.log
+.DS_Store
+Thumbs.db
+
+# Scratch extraction and search scripts
+extract_and_composite.ts
+find_ref_image.ts
+search_images.ts
+src/scripts/
+

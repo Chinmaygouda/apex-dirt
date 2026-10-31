@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>Apex Dirt - Low-Poly Rally Sandbox</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html, body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0f172a;
+      }
+      body > canvas {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      #debug-canvas {
+        display: block;
+        width: 292px !important;
+        height: 230px !important;
+      }
+      /* Ensure lil-gui fits well in upper right */
+      .lil-gui {
+        --font-size: 11px;
+        --name-width: 50%;
+        font-family: 'Inter', -apple-system, sans-serif !important;
+        z-index: 200 !important;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
