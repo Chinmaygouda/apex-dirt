@@ -60,14 +60,26 @@ for (const row of rows) {
   const droopRL = (vehicle.lastVisualDroop[2] || 0) * 100;
   const roll = (vehicle as any).currentVisualRoll;
   
-  if (row.timeS >= 1.5 && row.timeS <= 4.3 && (lastReportT < 0 || row.timeS - lastReportT >= 0.099)) {
+  if (row.timeS >= 2.0 && row.timeS <= 4.35 && (lastReportT < 0 || row.timeS - lastReportT >= 0.099)) {
     lastReportT = row.timeS;
-    let phase = 'Slide Scrub';
-    if (row.timeS < 1.6) phase = 'Straight Approach';
-    else if (row.timeS < 2.05) phase = 'Straight Braking';
-    else if (row.timeS < 2.4) phase = 'Turn-in / Handbrake';
-    else if (row.timeS < 3.2) phase = 'Initial Rotation';
-    else if (row.timeS > 3.6) phase = 'Sustained Slide';
-    console.log(`${row.timeS.toFixed(2).padStart(7)} | ${phase.padEnd(25)} | ${telem.speedMph.toFixed(1).padStart(10)} | ${row.steer.toFixed(2).padStart(5)} | ${(row.handbrake ? 'YES' : ' NO').padStart(3)} | ${roll.toFixed(1).padStart(7)}° | ${droopRL.toFixed(1).padStart(21)} cm | ${droopRL >= 9.0 ? '[PEAK]' : droopRL > 0.1 ? '[SETTLED]' : '[LEVEL]'}`);
+    const fz = (vehicle as any).wheelNormalForces;
+    const droopRL = vehicle.lastVisualDroop[2] * 100;
+    const droopRR = vehicle.lastVisualDroop[3] * 100;
+    const roll = vehicle.getVisualRollDeg();
+    const pitch = vehicle.getVisualPitchDeg();
+    const slip = vehicle.driftAngleDeg;
+    const speed = telem.speedMph;
+
+    // Report inside rear droop (turning right -> inside is RL)
+    console.log(
+      `${row.timeS.toFixed(2)}s | ` +
+      `${speed.toFixed(1).padStart(5)} mph | ` +
+      `Steer: ${row.steer.toFixed(2).padStart(5)} | ` +
+      `HB: ${row.handbrake ? 'YES' : ' NO'} | ` +
+      `Slip: ${slip.toFixed(1).padStart(5)}° | ` +
+      `Roll: ${roll.toFixed(1).padStart(5)}° | ` +
+      `Pitch: ${pitch.toFixed(1).padStart(5)}° | ` +
+      `Inside Rear Droop: ${droopRL.toFixed(1).padStart(4)} cm`
+    );
   }
 }

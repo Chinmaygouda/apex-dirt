@@ -45,35 +45,42 @@ export class ChaseCamera {
     this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 5.0 * dt));
     this.camera.updateProjectionMatrix();
 
-    // Desired camera direction: smoothly blends behind velocity vector during slides over a wide speed range
+    // Desired camera direction: in slides, reduce velocity-following so camera lags heading on outside of corner (~35-45° visible angle)
     const velVec = new THREE.Vector3(linvel.x, 0, linvel.z);
     const vPlanar = velVec.length();
 
     // Continuous smooth transition over wide speed range (3 m/s ~ 6.7 mph to 18 m/s ~ 40 mph)
     const speedFactor = THREE.MathUtils.smoothstep(vPlanar, 3.0, 18.0);
 
-    let slideFactor = 0;
+    let slideAngleRad = 0;
     let normVel = forward.clone();
+    let isSlideRight = false;
     if (vPlanar > 0.1) {
       normVel = velVec.clone().multiplyScalar(1 / vPlanar);
       const forwardDot = THREE.MathUtils.clamp(forward.dot(normVel), -1, 1);
-      const slideAngleRad = Math.acos(forwardDot);
-      slideFactor = THREE.MathUtils.smoothstep(slideAngleRad, THREE.MathUtils.degToRad(3.0), THREE.MathUtils.degToRad(25.0));
+      slideAngleRad = Math.acos(forwardDot);
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(chassisQuat);
+      isSlideRight = right.dot(normVel) < 0;
     }
 
-    const slideBlend = 0.50 * speedFactor * slideFactor;
-    this.cameraMode = slideBlend > 0.12 ? 'chase_slide' : 'chase_follow';
+    // Deadzone below 4.5° so straight lines stay centered (< 1°), smoothly blending in drifts
+    const slideFactor = THREE.MathUtils.smoothstep(slideAngleRad, THREE.MathUtils.degToRad(4.5), THREE.MathUtils.degToRad(25.0));
+
+    this.cameraMode = slideFactor > 0.12 ? 'chase_slide' : 'chase_follow';
 
     const targetCamDir = forward.clone();
-    if (slideBlend > 0.001) {
-      targetCamDir.lerp(normVel, slideBlend).normalize();
+    if (slideFactor > 0.001) {
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(chassisQuat);
+      const outsideVec = isSlideRight ? right.clone().negate() : right.clone();
+      const offsetWeight = 0.72 * speedFactor * slideFactor;
+      targetCamDir.addScaledVector(outsideVec, offsetWeight).normalize();
     }
 
-    // Continuous frame-to-frame direction smoothing eliminates any 1-frame yaw jumps
+    // Continuous frame-to-frame direction smoothing eliminates any 1-frame yaw jumps (< 3° / frame)
     if (this.currentCamDir.lengthSq() < 0.1) {
       this.currentCamDir.copy(targetCamDir);
     } else {
-      this.currentCamDir.lerp(targetCamDir, Math.min(1.0, 10.0 * dt)).normalize();
+      this.currentCamDir.lerp(targetCamDir, Math.min(1.0, 4.5 * dt)).normalize();
     }
 
     const desiredPos = chassisPos.clone()
@@ -84,21 +91,9 @@ export class ChaseCamera {
     const lerpFactor = Math.min(1.0, (1.0 - Math.pow(this.cameraLag, dt * 60)));
     this.camera.position.lerp(desiredPos, lerpFactor);
 
-    // Look-ahead target smoothly blended towards travel direction
-    const lookAheadBlend = 0.25 * speedFactor * slideFactor;
-    const targetLookDir = forward.clone();
-    if (lookAheadBlend > 0.001) {
-      targetLookDir.lerp(normVel, lookAheadBlend).normalize();
-    }
-
-    if (this.currentLookDir.lengthSq() < 0.1) {
-      this.currentLookDir.copy(targetLookDir);
-    } else {
-      this.currentLookDir.lerp(targetLookDir, Math.min(1.0, 10.0 * dt)).normalize();
-    }
-
-    const lookAhead = this.currentLookDir.clone().multiplyScalar(4.0);
-    const desiredTarget = chassisPos.clone().add(new THREE.Vector3(0, 1.0, 0)).add(lookAhead);
+    // Look-ahead target centered cleanly on vehicle
+    const lookAhead = forward.clone().multiplyScalar(1.2);
+    const desiredTarget = chassisPos.clone().add(new THREE.Vector3(0, 0.9, 0)).add(lookAhead);
     this.currentTarget.lerp(desiredTarget, lerpFactor);
 
     this.camera.lookAt(this.currentTarget);
