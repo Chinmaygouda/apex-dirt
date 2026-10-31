@@ -75,6 +75,8 @@ for (const row of rows) {
   const droopRR = (vehicle.lastVisualDroop[3] || 0) * 100;
 
   if ([2.0, 2.37, 2.5, 2.8, 3.2, 3.8, 4.1].some(t => Math.abs(row.timeS - t) < 0.02)) {
-    console.log(`t=${row.timeS.toFixed(2)} | spd=${telem.speedMph.toFixed(1)} | steer=${row.steer.toFixed(2)} | latG=${latG.toFixed(2)} | roll=${roll.toFixed(1)}° | pitch=${pitch.toFixed(1)}° | droopRR=${droopRR.toFixed(1)}cm | droopRL=${droopRL.toFixed(1)}cm`);
+    const fz = (vehicle as any).wheelNormalForces;
+    console.log(`t=${row.timeS.toFixed(2)} | spd=${telem.speedMph.toFixed(1)} | steer=${row.steer.toFixed(2)} | latG=${latG.toFixed(2)} | roll=${roll.toFixed(1)}° | pitch=${pitch.toFixed(1)}° | Fz_RL=${fz[2].toFixed(0)}N | Fz_RR=${fz[3].toFixed(0)}N | droopRL=${droopRL.toFixed(1)}cm`);
   }
 }
+

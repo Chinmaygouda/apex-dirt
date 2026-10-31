@@ -101,7 +101,7 @@ export class CustomRallyVehicle {
   public drivingDirectionMode: 'forward' | 'reverse' = 'forward';
 
   // Visual materials
-  private brakeLightMat!: THREE.MeshStandardMaterial;
+  private brakeLightMat!: THREE.MeshBasicMaterial;
   private runningLightMat!: THREE.MeshStandardMaterial;
 
   // Vehicle Parameters
@@ -306,7 +306,7 @@ export class CustomRallyVehicle {
     const bodyDesc = rapier.RigidBodyDesc.dynamic()
       .setTranslation(0, 0.6593, -8)
       .setLinearDamping(0.005)
-      .setAngularDamping(0.6)
+      .setAngularDamping(0.45)
       .setCanSleep(false);
 
     this.chassisBody = this.physics.world.createRigidBody(bodyDesc);
@@ -1109,15 +1109,23 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Dynamic transient rotation factor for inside rear droop:
-    // Peaks briefly during rotation entry / handbrake snap, then settles to a smaller steady value (~6.5-7.5 cm) in a sustained slide.
-    const angvelY = Math.abs(this.chassisBody.angvel().y);
-    const isRotationalSnap = inputs.handbrake || angvelY > 0.65;
-    if (isRotationalSnap) {
-      this.droopTransient = Math.min(1.0, this.droopTransient + 10.0 * frameDt);
-    } else {
-      this.droopTransient = Math.max(0, this.droopTransient - 2.8 * frameDt);
-    }
+    // Per-wheel normal forces and axle load totals for load-driven droop
+    const fzFL = this.wheelNormalForces[0] || 0;
+    const fzFR = this.wheelNormalForces[1] || 0;
+    const fzRL = this.wheelNormalForces[2] || 0;
+    const fzRR = this.wheelNormalForces[3] || 0;
+    const frontTotalFz = fzFL + fzFR;
+    const rearTotalFz = fzRL + fzRR;
+    const totalFz = Math.max(1000, frontTotalFz + rearTotalFz);
+
+    // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
+    const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
+
+    // Active cornering or slide detection
+    // Straight line: steer < 0.25 AND slip < 6° -> motion gating is 0
+    const steerActive = THREE.MathUtils.smoothstep(steerMag, 0.25, 0.40);
+    const slideActive = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 6.0, 15.0);
+    const motionGating = Math.max(steerActive, slideActive);
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1128,20 +1136,31 @@ export class CustomRallyVehicle {
       const suspLen = this.currentSuspensionLengths[i];
 
       // Wheel droop in rotation:
-      // Driven from smoothed lateral acceleration with a deadzone.
-      // With steering within +/-0.25 or lateral G within deadzone, droop is strictly 0.
-      // In corners/slides, only the unweighted inside rear wheel droops below the arch.
+      // Driven directly from per-wheel normal load unloading (peaks 8-15 cm during handbrake rotation, load-driven in sustained slide).
+      // With steering within +/-0.25 on straights (and slip < 6°), droop is strictly 0.
       let visualDroop = 0;
       const isRearWheel = i >= 2;
-      if (isRearWheel && excessLatG > 0 && steerGating > 0) {
-        const droopRatio = THREE.MathUtils.clamp(excessLatG / 0.85, 0, 1) * steerGating;
-        // When turning right (smoothedLateralG > 0), inside rear wheel is right wheel (i === 3).
-        // When turning left (smoothedLateralG < 0), inside rear wheel is left wheel (i === 2).
-        const isInsideRear = (this.smoothedLateralG > 0 && i === 3) || (this.smoothedLateralG < 0 && i === 2);
-        if (isInsideRear) {
-          const steadyFraction = 0.42;
-          const dynamicScale = steadyFraction + (1.0 - steadyFraction) * this.droopTransient;
-          visualDroop = droopRatio * dynamicScale * this.tuning.visualDroopExtension * exag;
+      if (isRearWheel && motionGating > 0) {
+        const partnerIdx = i === 2 ? 3 : 2;
+        const fzSelf = this.wheelNormalForces[i] || 0;
+        const fzPartner = this.wheelNormalForces[partnerIdx] || 0;
+
+        // Inside rear wheel has less normal force than outside partner
+        if (fzPartner > fzSelf) {
+          const latUnload = (fzPartner - fzSelf) / Math.max(1000, fzPartner);
+          const hbUnload = inputs.handbrake ? 0.38 : 0.0;
+
+          // Purely load-driven droop ratio (no artificial static floor)
+          const targetDroopRatio = THREE.MathUtils.clamp(
+            latUnload * 0.72 + pitchUnload * 1.15 + hbUnload,
+            0,
+            1.0
+          ) * motionGating;
+
+          const targetDroop = targetDroopRatio * this.tuning.visualDroopExtension * exag;
+          // Smooth transient response
+          const currentDroop = this.lastVisualDroop[i] || 0;
+          visualDroop = currentDroop + (targetDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
         }
       }
       this.lastVisualDroop[i] = visualDroop;
@@ -1162,11 +1181,10 @@ export class CustomRallyVehicle {
       wheelMesh.quaternion.multiply(steerQuat).multiply(rollQuat);
     }
 
-    // Brake lights
+    // Brake lights (MeshBasicMaterial glows pure self-luminous red)
     const isBraking = inputs.brake > 0.05 || inputs.handbrake;
     if (this.brakeLightMat) {
-      this.brakeLightMat.emissiveIntensity = isBraking ? 2.2 : 0.4;
-      this.brakeLightMat.color.setHex(isBraking ? 0xff1e00 : 0xaa0000);
+      this.brakeLightMat.color.setHex(isBraking ? 0xff1500 : 0x550000);
     }
   }
 
@@ -1248,11 +1266,8 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
-    this.brakeLightMat = new THREE.MeshStandardMaterial({
-      color: 0xff1e00,
-      emissive: 0xff1e00,
-      emissiveIntensity: 1.5,
-      flatShading: true,
+    this.brakeLightMat = new THREE.MeshBasicMaterial({
+      color: 0x550000,
     });
 
     const amberLightMat = new THREE.MeshStandardMaterial({
@@ -1316,7 +1331,7 @@ export class CustomRallyVehicle {
 
     // 5. 3-Tier Taillights (Red, Amber, Reverse White matching sampled pixel data)
     // Left cluster
-    const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.runningLightMat);
+    const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
     tlRedL.position.set(-0.55, 0.30, -2.06);
     carGroup.add(tlRedL);
 
@@ -1329,7 +1344,7 @@ export class CustomRallyVehicle {
     carGroup.add(tlWhiteL);
 
     // Right cluster
-    const tlRedR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.runningLightMat);
+    const tlRedR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
     tlRedR.position.set(0.55, 0.30, -2.06);
     carGroup.add(tlRedR);
 

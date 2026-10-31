@@ -165,6 +165,17 @@ export class ReplayVisualizer {
             const resJson = await resp.json();
             console.log(`[ReplayVisualizer] Captured t=${targetT.toFixed(1)}s -> ${resJson.path}`);
             savedFiles.push(resJson.path);
+
+            if (Math.abs(targetT - 2.5) < 0.05) {
+              const respBrake = await fetch('/api/save-screenshot', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filename: 'replay_t2_5_brakelights.png', dataUrl, metric }),
+              });
+              const resBrakeJson = await respBrake.json();
+              console.log(`[ReplayVisualizer] Captured t=2.5s (brakelights) -> ${resBrakeJson.path}`);
+              savedFiles.push(resBrakeJson.path);
+            }
           } catch (e) {
             console.error(`Failed to save screenshot at t=${targetT}s`, e);
           }
