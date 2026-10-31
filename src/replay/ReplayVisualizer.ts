@@ -167,14 +167,30 @@ export class ReplayVisualizer {
             savedFiles.push(resJson.path);
 
             if (Math.abs(targetT - 2.5) < 0.05) {
+              // Dedicated brake light verification capture: close-in rear perspective focusing on glowing taillights
+              const origCamPos = this.camera.camera.position.clone();
+              const origCamQuat = this.camera.camera.quaternion.clone();
+
+              const rearCarPos = this.vehicle.chassisMesh.position.clone();
+              const carQuat = this.vehicle.chassisMesh.quaternion.clone();
+              const rearOffset = new THREE.Vector3(0, 0.42, -4.2).applyQuaternion(carQuat);
+              this.camera.camera.position.copy(rearCarPos).add(rearOffset);
+              this.camera.camera.lookAt(rearCarPos.x, rearCarPos.y + 0.32, rearCarPos.z);
+              this.renderer.render(this.scene, this.camera.camera);
+
+              const brakeDataUrl = this.renderer.domElement.toDataURL('image/png');
               const respBrake = await fetch('/api/save-screenshot', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ filename: 'replay_t2_5_brakelights.png', dataUrl, metric }),
+                body: JSON.stringify({ filename: 'replay_t2_5_brakelights.png', dataUrl: brakeDataUrl, metric }),
               });
               const resBrakeJson = await respBrake.json();
               console.log(`[ReplayVisualizer] Captured t=2.5s (brakelights) -> ${resBrakeJson.path}`);
               savedFiles.push(resBrakeJson.path);
+
+              // Restore chase camera
+              this.camera.camera.position.copy(origCamPos);
+              this.camera.camera.quaternion.copy(origCamQuat);
             }
           } catch (e) {
             console.error(`Failed to save screenshot at t=${targetT}s`, e);

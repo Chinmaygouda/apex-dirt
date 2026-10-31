@@ -150,6 +150,11 @@ async function initGame() {
   const replayVisualizer = new ReplayVisualizer(scene, physics, vehicle, camera, renderer, sunLight);
   (window as any).runVisualReplay = () => replayVisualizer.runAndCaptureScreenshots();
 
+  // Deterministic 4-Clip Video Recorder
+  const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
+  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight);
+  (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
+
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
       console.log('Automated Test A Triggered via query param');
@@ -163,6 +168,16 @@ async function initGame() {
       const files = await replayVisualizer.runAndCaptureScreenshots();
       (window as any).__replayFinished = true;
       (window as any).__savedScreenshots = files;
+    }, 600);
+  }
+
+  if (window.location.search.includes('render_videos=true')) {
+    setTimeout(async () => {
+      console.log('Automated 4-Clip Deterministic Video Render Triggered via query param');
+      const results = await videoRecorder.renderAllClips();
+      (window as any).__videoRenderFinished = true;
+      (window as any).__videoResults = results;
+      console.log('All video clips rendered & finished successfully:', results);
     }, 600);
   }
 
