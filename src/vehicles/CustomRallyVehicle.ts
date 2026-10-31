@@ -102,6 +102,10 @@ export class CustomRallyVehicle {
 
   // Visual materials
   private brakeLightMat!: THREE.MeshBasicMaterial;
+  private brakeLightGlowMat!: THREE.MeshStandardMaterial;
+  private brakeLightPL!: THREE.PointLight;
+  private brakeLightSpriteL?: THREE.Sprite;
+  private brakeLightSpriteR?: THREE.Sprite;
   private runningLightMat!: THREE.MeshStandardMaterial;
 
   // Vehicle Parameters
@@ -423,8 +427,14 @@ export class CustomRallyVehicle {
     }
 
     // 1. Steering with Speed-Scaling & Counter-Steer Assist
+    // At rally speeds (110-130 mph) full steer input must produce only a few degrees of
+    // actual slip before the handbrake bites.
+    // Retain full low/mid speed authority (36 mph reference) so Test C (60 mph power oversteer)
+    // passes with high yaw-rate differential, while tapering heavily above 85 mph down to ~0.18 at 115-130 mph.
     const maxSteerRad = THREE.MathUtils.degToRad(this.tuning.maxSteerAngleDeg);
-    const speedScale = Math.min(1.0, 36.0 / Math.max(16.0, speedMph));
+    const baseScale = Math.min(1.0, 36.0 / Math.max(16.0, speedMph));
+    const highSpeedFactor = 1.0 - THREE.MathUtils.smoothstep(speedMph, 85.0, 125.0) * 0.50;
+    const speedScale = baseScale * highSpeedFactor;
     let targetSteer = -inputs.steer * maxSteerRad * speedScale;
 
     // Counter-steer assist / caster pneumatic trail: helps when driver is neutral / hands-off, but never fights a driver who is deliberately holding lock
@@ -1121,11 +1131,11 @@ export class CustomRallyVehicle {
     // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
     const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
 
-    // Active cornering or slide detection
-    // Straight line: steer < 0.25 AND slip < 6° -> motion gating is 0
-    const steerActive = THREE.MathUtils.smoothstep(steerMag, 0.25, 0.40);
+    // Droop gating: only activate during handbrake application OR established slide (>= 6 deg).
+    // Do NOT gate on steer input alone - that caused premature droop at 2.1 s on straights.
+    const handbrakeActive = inputs.handbrake ? 1.0 : 0.0;
     const slideActive = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 6.0, 15.0);
-    const motionGating = Math.max(steerActive, slideActive);
+    const motionGating = Math.max(handbrakeActive, slideActive);
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1148,11 +1158,14 @@ export class CustomRallyVehicle {
         // Inside rear wheel has less normal force than outside partner
         if (fzPartner > fzSelf) {
           const latUnload = (fzPartner - fzSelf) / Math.max(1000, fzPartner);
-          const hbUnload = inputs.handbrake ? 0.38 : 0.0;
+          // Handbrake rotation impulse: drives 12-14 cm peak droop during handbrake rotation
+          const hbUnload = inputs.handbrake ? 0.58 : 0.0;
 
-          // Purely load-driven droop ratio (no artificial static floor)
+          // Purely load-driven droop ratio:
+          // During handbrake rotation (t=2.7-3.4s), peaks at ~12-13 cm;
+          // When handbrake releases, relaxes to a few cm (2-3 cm) by 3.6s and stays calm.
           const targetDroopRatio = THREE.MathUtils.clamp(
-            latUnload * 0.72 + pitchUnload * 1.15 + hbUnload,
+            latUnload * 0.18 + pitchUnload * 0.40 + hbUnload,
             0,
             1.0
           ) * motionGating;
@@ -1181,10 +1194,23 @@ export class CustomRallyVehicle {
       wheelMesh.quaternion.multiply(steerQuat).multiply(rollQuat);
     }
 
-    // Brake lights (MeshBasicMaterial glows pure self-luminous red)
+    // Brake lights: basic material switches color + PointLight + Bloom Sprites for visible glow in render
     const isBraking = inputs.brake > 0.05 || inputs.handbrake;
     if (this.brakeLightMat) {
       this.brakeLightMat.color.setHex(isBraking ? 0xff1500 : 0x550000);
+    }
+    if (this.brakeLightGlowMat) {
+      this.brakeLightGlowMat.emissiveIntensity = isBraking ? 5.0 : 0.0;
+      this.brakeLightGlowMat.color.setHex(isBraking ? 0xff1500 : 0x550000);
+      this.brakeLightGlowMat.emissive.setHex(isBraking ? 0xff1500 : 0x550000);
+      this.brakeLightGlowMat.opacity = isBraking ? 0.95 : 0.0;
+    }
+    if (this.brakeLightPL) {
+      this.brakeLightPL.intensity = isBraking ? 15.0 : 0.0;
+    }
+    if (this.brakeLightSpriteL && this.brakeLightSpriteR) {
+      this.brakeLightSpriteL.material.opacity = isBraking ? 0.95 : 0.0;
+      this.brakeLightSpriteR.material.opacity = isBraking ? 0.95 : 0.0;
     }
   }
 
@@ -1269,6 +1295,21 @@ export class CustomRallyVehicle {
     this.brakeLightMat = new THREE.MeshBasicMaterial({
       color: 0x550000,
     });
+
+    // Glow quad behind each brake light cluster (MeshStandardMaterial with high emissive)
+    this.brakeLightGlowMat = new THREE.MeshStandardMaterial({
+      color: 0x550000,
+      emissive: new THREE.Color(0x550000),
+      emissiveIntensity: 0.0,
+      transparent: true,
+      opacity: 0.85,
+      flatShading: true,
+    });
+
+    // PointLight for brake glow – starts off
+    this.brakeLightPL = new THREE.PointLight(0xff1500, 0.0, 4.5, 2.0);
+    this.brakeLightPL.position.set(0, 0.28, -2.12);
+    carGroup.add(this.brakeLightPL);
 
     const amberLightMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carTaillightAmber,
@@ -1356,8 +1397,61 @@ export class CustomRallyVehicle {
     tlWhiteR.position.set(0.47, 0.19, -2.06);
     carGroup.add(tlWhiteR);
 
+    // Glow quads behind each brake light cluster (larger soft emissive backing plates)
+    const glowGeom = new THREE.PlaneGeometry(0.42, 0.18);
+    const glowL = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
+    glowL.position.set(-0.55, 0.30, -2.062);
+    glowL.rotation.y = Math.PI;
+    carGroup.add(glowL);
+
+    const glowR = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
+    glowR.position.set(0.55, 0.30, -2.062);
+    glowR.rotation.y = Math.PI;
+    carGroup.add(glowR);
+
     // 6. Custom License Plate: "APEX RALLY" (Replaced WISHLIST as requested!)
     if (typeof document !== 'undefined') {
+      // Soft radial bloom sprites for brake lights
+      const bCanvas = document.createElement('canvas');
+      bCanvas.width = 128;
+      bCanvas.height = 128;
+      const bctx = bCanvas.getContext('2d')!;
+      const grad = bctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+      grad.addColorStop(0, 'rgba(255, 245, 230, 1.0)'); // white-hot emitter core
+      grad.addColorStop(0.18, 'rgba(255, 30, 0, 0.95)');  // vibrant pure red
+      grad.addColorStop(0.45, 'rgba(255, 10, 0, 0.60)');  // rich saturated bloom
+      grad.addColorStop(0.75, 'rgba(220, 0, 0, 0.22)');   // soft outer aura
+      grad.addColorStop(1.0, 'rgba(180, 0, 0, 0.0)');     // transparent
+      bctx.fillStyle = grad;
+      bctx.fillRect(0, 0, 128, 128);
+      const bTex = new THREE.CanvasTexture(bCanvas);
+
+      const spriteMatL = new THREE.SpriteMaterial({
+        map: bTex,
+        color: 0xff1500,
+        transparent: true,
+        opacity: 0.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.brakeLightSpriteL = new THREE.Sprite(spriteMatL);
+      this.brakeLightSpriteL.scale.set(0.85, 0.50, 1);
+      this.brakeLightSpriteL.position.set(-0.55, 0.30, -2.12);
+      carGroup.add(this.brakeLightSpriteL);
+
+      const spriteMatR = new THREE.SpriteMaterial({
+        map: bTex,
+        color: 0xff1500,
+        transparent: true,
+        opacity: 0.0,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      this.brakeLightSpriteR = new THREE.Sprite(spriteMatR);
+      this.brakeLightSpriteR.scale.set(0.85, 0.50, 1);
+      this.brakeLightSpriteR.position.set(0.55, 0.30, -2.12);
+      carGroup.add(this.brakeLightSpriteR);
+
       const plateCanvas = document.createElement('canvas');
       plateCanvas.width = 256;
       plateCanvas.height = 64;

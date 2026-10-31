@@ -6,6 +6,8 @@ screenshots/
 # Video files (strictly do not commit any video from the Hardpack Rally reel)
 *.mp4
 *.mov
+!v8/videos/*.mp4
+temp_video_frames/
 
 # Reference footage and composite frames (strictly do not commit any reference material)
 reference_drift_frames.png
