@@ -1,0 +1,50 @@
+[
+  {
+    "t": 2,
+    "rollDeg": 0.86,
+    "pitchDeg": -0.22,
+    "rideHeightChangeMm": -2,
+    "speedMph": 132.1,
+    "slipDeg": -3.3
+  },
+  {
+    "t": 2.5,
+    "rollDeg": 0.16,
+    "pitchDeg": 0.58,
+    "rideHeightChangeMm": -0.1,
+    "speedMph": 114.4,
+    "slipDeg": 16.8
+  },
+  {
+    "t": 2.8,
+    "rollDeg": 0.12,
+    "pitchDeg": 0.43,
+    "rideHeightChangeMm": -0.6,
+    "speedMph": 107,
+    "slipDeg": 22.6
+  },
+  {
+    "t": 3.2,
+    "rollDeg": -0.46,
+    "pitchDeg": 0.41,
+    "rideHeightChangeMm": -0.3,
+    "speedMph": 97.9,
+    "slipDeg": 22.5
+  },
+  {
+    "t": 3.8,
+    "rollDeg": 3.6,
+    "pitchDeg": 0.25,
+    "rideHeightChangeMm": 0.8,
+    "speedMph": 82.7,
+    "slipDeg": 26.3
+  },
+  {
+    "t": 4.1,
+    "rollDeg": 4.09,
+    "pitchDeg": 0.09,
+    "rideHeightChangeMm": 2.2,
+    "speedMph": 76.4,
+    "slipDeg": 24.1
+  }
+]
