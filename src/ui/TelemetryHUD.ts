@@ -1,15 +1,30 @@
+import * as THREE from 'three';
 import { VehicleTelemetry } from '../vehicles/RapierBaselineVehicle';
 import { PALETTE } from '../core/Constants';
+import { StageManager, PaceNote } from '../gameplay/StageManager';
 
 export class TelemetryHUD {
   private container: HTMLElement;
   private timerEl!: HTMLElement;
+  private gateEl!: HTMLElement;
+  private bestTimeEl!: HTMLElement;
+  private splitPillEl!: HTMLElement;
+  private paceNoteBoxEl!: HTMLElement;
+  private paceNoteIconEl!: HTMLElement;
+  private paceNoteTextEl!: HTMLElement;
+  private countdownEl!: HTMLElement;
+  private finishBannerEl!: HTMLElement;
+
   private speedoCanvas!: HTMLCanvasElement;
   private speedoCtx!: CanvasRenderingContext2D;
   private digitalSpeedEl!: HTMLElement;
   private gearEl!: HTMLElement;
+  private manualBadge!: HTMLElement;
   private drivetrainBadge!: HTMLElement;
   private handbrakeBadge!: HTMLElement;
+  private clutchBadge!: HTMLElement;
+  private distanceEl!: HTMLElement;
+
   private steerBarFill!: HTMLElement;
   private throttleBarFill!: HTMLElement;
   private brakeBarFill!: HTMLElement;
@@ -39,32 +54,168 @@ export class TelemetryHUD {
       }
       .hud-top-banner {
         position: absolute;
-        top: 18px;
+        top: 16px;
         left: 50%;
         transform: translateX(-50%);
         background: ${PALETTE.HUD_BG};
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-        border-radius: 12px;
-        padding: 8px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        box-shadow: 0 12px 30px rgba(0,0,0,0.6);
+        border-radius: 14px;
+        padding: 8px 28px;
         text-align: center;
-        backdrop-filter: blur(8px);
+        backdrop-filter: blur(10px);
+        min-width: 280px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
-      .hud-timer {
-        font-size: 26px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        color: #ffffff;
-        font-variant-numeric: tabular-nums;
-      }
-      .hud-sub-label {
+      .hud-stage-title {
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 1.5px;
-        color: #94a3b8;
-        margin-top: 2px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        color: #f59e0b;
         text-transform: uppercase;
       }
+      .hud-timer-row {
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        margin: 2px 0;
+      }
+      .hud-timer {
+        font-size: 32px;
+        font-weight: 900;
+        letter-spacing: 1.5px;
+        color: #ffffff;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      }
+      .hud-gate-badge {
+        font-size: 13px;
+        font-weight: 800;
+        letter-spacing: 1px;
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        padding: 2px 10px;
+        border-radius: 6px;
+      }
+      .hud-best-time {
+        font-size: 11px;
+        font-weight: 700;
+        color: #94a3b8;
+        letter-spacing: 1px;
+      }
+
+      /* Orange Split-Time Pill (~1s) */
+      .hud-split-pill {
+        position: absolute;
+        top: 86px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #ff6d00;
+        color: #ffffff;
+        font-size: 14px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        padding: 4px 18px;
+        border-radius: 20px;
+        box-shadow: 0 0 20px rgba(255, 109, 0, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        opacity: 0;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+        pointer-events: none;
+      }
+      .hud-split-pill.show {
+        opacity: 1;
+        transform: translateX(-50%) scale(1.05);
+      }
+
+      /* Pace Note Box (Curve Icon from Spline Curvature 60-100m ahead) */
+      .hud-pace-box {
+        position: absolute;
+        top: 130px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(15, 23, 42, 0.9);
+        border: 2px solid #eab308;
+        border-radius: 12px;
+        padding: 8px 18px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+        backdrop-filter: blur(8px);
+        min-width: 170px;
+        justify-content: center;
+      }
+      .pace-icon-svg {
+        width: 38px;
+        height: 38px;
+        fill: none;
+        stroke: #eab308;
+        stroke-width: 4;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      .pace-text {
+        font-size: 20px;
+        font-weight: 900;
+        color: #ffffff;
+        letter-spacing: 1.5px;
+        text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      }
+
+      /* Big Start Countdown Overlay */
+      .hud-countdown {
+        position: absolute;
+        top: 38%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 96px;
+        font-weight: 900;
+        color: #facc15;
+        text-shadow: 0 0 40px rgba(250, 204, 21, 0.8), 0 4px 15px rgba(0,0,0,0.8);
+        display: none;
+      }
+
+      /* Stage Finished Modal Banner */
+      .hud-finish-banner {
+        position: absolute;
+        top: 35%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(15, 23, 42, 0.95);
+        border: 2px solid #22c55e;
+        border-radius: 18px;
+        padding: 24px 44px;
+        text-align: center;
+        box-shadow: 0 0 50px rgba(34, 197, 94, 0.4);
+        backdrop-filter: blur(12px);
+        display: none;
+      }
+      .hud-finish-title {
+        font-size: 36px;
+        font-weight: 900;
+        color: #4ade80;
+        letter-spacing: 2px;
+        margin-bottom: 8px;
+      }
+      .hud-finish-time {
+        font-size: 44px;
+        font-weight: 900;
+        color: #ffffff;
+        margin-bottom: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+      .hud-restart-prompt {
+        font-size: 13px;
+        font-weight: 700;
+        color: #94a3b8;
+        letter-spacing: 1px;
+      }
+
+      /* Bottom Right Speedo / Rev Arc */
       .hud-bottom-right {
         position: absolute;
         bottom: 24px;
@@ -75,12 +226,12 @@ export class TelemetryHUD {
       }
       .speedo-wrap {
         position: relative;
-        width: 170px;
-        height: 170px;
+        width: 175px;
+        height: 175px;
       }
       .speedo-canvas {
-        width: 170px;
-        height: 170px;
+        width: 175px;
+        height: 175px;
       }
       .speedo-center {
         position: absolute;
@@ -91,11 +242,18 @@ export class TelemetryHUD {
         justify-content: center;
       }
       .gear-number {
-        font-size: 42px;
+        font-size: 46px;
         font-weight: 900;
         color: #ffffff;
         line-height: 1;
         text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      }
+      .manual-badge {
+        font-size: 11px;
+        font-weight: 900;
+        color: #eab308;
+        letter-spacing: 1.5px;
+        margin-top: 2px;
       }
       .digital-speed {
         font-size: 32px;
@@ -110,9 +268,13 @@ export class TelemetryHUD {
         color: #94a3b8;
         letter-spacing: 1px;
       }
-      .handbrake-badge {
+      .hud-badges-row {
+        display: flex;
+        gap: 8px;
         margin-top: 8px;
-        padding: 3px 12px;
+      }
+      .hud-badge {
+        padding: 3px 10px;
         border-radius: 4px;
         font-size: 11px;
         font-weight: 800;
@@ -122,24 +284,20 @@ export class TelemetryHUD {
         border: 1px solid rgba(255, 255, 255, 0.1);
         transition: all 0.1s ease;
       }
-      .handbrake-badge.active {
+      .hud-badge.hb-active {
         background: #dc2626;
         color: #ffffff;
         border-color: #ef4444;
         box-shadow: 0 0 14px rgba(220, 38, 38, 0.8);
       }
-      .drivetrain-badge {
-        position: absolute;
-        bottom: -22px;
-        font-size: 11px;
-        font-weight: 800;
-        letter-spacing: 1px;
-        padding: 2px 8px;
-        border-radius: 4px;
-        background: rgba(15, 23, 42, 0.9);
-        color: #f59e0b;
-        border: 1px solid rgba(245, 158, 11, 0.3);
+      .hud-badge.clutch-active {
+        background: #f59e0b;
+        color: #ffffff;
+        border-color: #fbbf24;
+        box-shadow: 0 0 14px rgba(245, 158, 11, 0.8);
       }
+
+      /* Bottom Left Input Telemetry & Distance */
       .hud-bottom-left {
         position: absolute;
         bottom: 24px;
@@ -147,10 +305,24 @@ export class TelemetryHUD {
         background: ${PALETTE.HUD_BG};
         border: 1px solid rgba(255, 255, 255, 0.12);
         box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-        border-radius: 12px;
+        border-radius: 14px;
         padding: 14px 18px;
         backdrop-filter: blur(8px);
-        min-width: 190px;
+        min-width: 200px;
+      }
+      .distance-counter {
+        font-size: 13px;
+        font-weight: 800;
+        color: #f8fafc;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.1);
+        display: flex;
+        justify-content: space-between;
+      }
+      .distance-counter span {
+        color: #38bdf8;
       }
       .input-bar-row {
         display: flex;
@@ -161,7 +333,7 @@ export class TelemetryHUD {
         color: #94a3b8;
       }
       .input-bar-label {
-        width: 60px;
+        width: 68px;
         letter-spacing: 0.5px;
       }
       .input-bar-track {
@@ -182,7 +354,7 @@ export class TelemetryHUD {
       .input-bar-fill.steer {
         position: absolute;
         left: 50%;
-        background: #a855f7;
+        background: #38bdf8;
       }
       .input-bar-fill.throttle {
         background: #22c55e;
@@ -212,6 +384,8 @@ export class TelemetryHUD {
         color: #4ade80;
         border: 1px solid rgba(34, 197, 94, 0.4);
       }
+
+      /* Controls Help */
       .hud-controls-help {
         position: absolute;
         top: 18px;
@@ -239,42 +413,81 @@ export class TelemetryHUD {
   }
 
   private createDom(): void {
-    // 1. Top Banner (Timer & Mode)
+    // 1. Top Stage Banner (Timer, Gate, Best Time)
     const topBanner = document.createElement('div');
     topBanner.className = 'hud-top-banner';
     topBanner.innerHTML = `
-      <div class="hud-timer" id="hud-timer">0:00.000</div>
-      <div class="hud-sub-label">PHASE 2 - CUSTOM TYRE MODEL & DRIFT SANDBOX</div>
+      <div class="hud-stage-title">STAGE 1 &bull; ALPINE PASS</div>
+      <div class="hud-timer-row">
+        <div class="hud-timer" id="hud-timer">00:00.00</div>
+        <div class="hud-gate-badge" id="hud-gate">GATE 1 OF 20</div>
+      </div>
+      <div class="hud-best-time" id="hud-best-time">BEST: --:--.--</div>
     `;
     this.container.appendChild(topBanner);
     this.timerEl = topBanner.querySelector('#hud-timer') as HTMLElement;
+    this.gateEl = topBanner.querySelector('#hud-gate') as HTMLElement;
+    this.bestTimeEl = topBanner.querySelector('#hud-best-time') as HTMLElement;
 
-    // 2. Controls Help Guide
+    // 2. Orange Split-Time Pill (~1s)
+    this.splitPillEl = document.createElement('div');
+    this.splitPillEl.className = 'hud-split-pill';
+    this.splitPillEl.id = 'hud-split-pill';
+    this.splitPillEl.textContent = '+00:04.12';
+    this.container.appendChild(this.splitPillEl);
+
+    // 3. Pace-Note Box (Curve Icon from Spline Curvature)
+    this.paceNoteBoxEl = document.createElement('div');
+    this.paceNoteBoxEl.className = 'hud-pace-box';
+    this.paceNoteBoxEl.innerHTML = `
+      <svg class="pace-icon-svg" id="pace-icon" viewBox="0 0 24 24">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+      <div class="pace-text" id="pace-text">FLAT OUT</div>
+    `;
+    this.container.appendChild(this.paceNoteBoxEl);
+    this.paceNoteIconEl = this.paceNoteBoxEl.querySelector('#pace-icon') as HTMLElement;
+    this.paceNoteTextEl = this.paceNoteBoxEl.querySelector('#pace-text') as HTMLElement;
+
+    // 4. Big Start Countdown Overlay
+    this.countdownEl = document.createElement('div');
+    this.countdownEl.className = 'hud-countdown';
+    this.countdownEl.id = 'hud-countdown';
+    this.countdownEl.textContent = '3';
+    this.container.appendChild(this.countdownEl);
+
+    // 5. Stage Finished Modal Banner
+    this.finishBannerEl = document.createElement('div');
+    this.finishBannerEl.className = 'hud-finish-banner';
+    this.finishBannerEl.innerHTML = `
+      <div class="hud-finish-title">STAGE COMPLETE</div>
+      <div class="hud-finish-time" id="finish-time">01:42.50</div>
+      <div class="hud-restart-prompt">PRESS [R] OR CLICK RESTART TO PLAY AGAIN</div>
+      <button id="btn-restart" style="pointer-events: auto; margin-top: 14px; background: #22c55e; color: #ffffff; border: none; border-radius: 8px; padding: 8px 22px; font-weight: 800; font-size: 13px; cursor: pointer;">RESTART STAGE</button>
+    `;
+    this.container.appendChild(this.finishBannerEl);
+    this.finishBannerEl.querySelector('#btn-restart')?.addEventListener('click', () => {
+      if ((window as any).restartStage) (window as any).restartStage();
+    });
+
+    // 6. Controls Help Guide
     const help = document.createElement('div');
     help.className = 'hud-controls-help';
     help.innerHTML = `
       <div><kbd>W</kbd> / <kbd>↑</kbd> Throttle &nbsp; <kbd>S</kbd> / <kbd>↓</kbd> Brake</div>
       <div><kbd>A</kbd> / <kbd>D</kbd> Steer &nbsp; <kbd>Space</kbd> Handbrake</div>
-      <div><kbd>T</kbd> Toggle RWD/AWD &nbsp; <kbd>R</kbd> Reset Car</div>
-      <div style="margin-top:6px; display:flex; gap:6px;">
-        <button id="btn-skidpad" style="pointer-events: auto; background: #ea580c; color: white; border: none; border-radius: 6px; padding: 4px 8px; font-weight: 700; font-size: 11px; cursor: pointer;">🏎 Skid Pad (1)</button>
-        <button id="btn-handbrake" style="pointer-events: auto; background: #2563eb; color: white; border: none; border-radius: 6px; padding: 4px 8px; font-weight: 700; font-size: 11px; cursor: pointer;">🅿 Handbrake (2)</button>
-      </div>
-      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad Supported</div>
+      <div><kbd>R</kbd> Restart Stage &nbsp; <kbd>T</kbd> Toggle Drivetrain</div>
+      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad Supported &bull; 20 Checkpoint Gates</div>
     `;
     this.container.appendChild(help);
 
-    help.querySelector('#btn-skidpad')?.addEventListener('click', () => {
-      if ((window as any).runSkidpadTest) (window as any).runSkidpadTest();
-    });
-    help.querySelector('#btn-handbrake')?.addEventListener('click', () => {
-      if ((window as any).runHandbrakeTest) (window as any).runHandbrakeTest();
-    });
-
-    // 3. Bottom Left Input Telemetry
+    // 7. Bottom Left Input Telemetry & Distance Odometer
     const bottomLeft = document.createElement('div');
     bottomLeft.className = 'hud-bottom-left';
     bottomLeft.innerHTML = `
+      <div class="distance-counter">
+        DISTANCE: <span id="dist-miles">0.00 mi</span>
+      </div>
       <div class="input-bar-row">
         <span class="input-bar-label">STEER</span>
         <div class="input-bar-track">
@@ -300,11 +513,12 @@ export class TelemetryHUD {
         <div class="wheel-pill" id="wheel-rr">RR: 0.0m</div>
       </div>
       <div style="font-size: 10px; color: #64748b; margin-top: 6px; text-align: center;" id="g-meter">
-        LATERAL: 0.00 G
+        LATERAL: 0.00 G | DIRT (72%)
       </div>
     `;
     this.container.appendChild(bottomLeft);
 
+    this.distanceEl = bottomLeft.querySelector('#dist-miles') as HTMLElement;
     this.steerBarFill = bottomLeft.querySelector('#steer-fill') as HTMLElement;
     this.throttleBarFill = bottomLeft.querySelector('#throttle-fill') as HTMLElement;
     this.brakeBarFill = bottomLeft.querySelector('#brake-fill') as HTMLElement;
@@ -317,60 +531,113 @@ export class TelemetryHUD {
       bottomLeft.querySelector('#wheel-rr') as HTMLElement,
     ];
 
-    // 4. Bottom Right Speedometer (Matches Screenshot 1/2 styling)
+    // 8. Bottom Right Speedometer (Rev Arc + Gear + M + HB + Clutch)
     const bottomRight = document.createElement('div');
     bottomRight.className = 'hud-bottom-right';
     bottomRight.innerHTML = `
       <div class="speedo-wrap">
-        <canvas class="speedo-canvas" id="speedo-canvas" width="340" height="340"></canvas>
+        <canvas class="speedo-canvas" id="speedo-canvas" width="350" height="350"></canvas>
         <div class="speedo-center">
           <div class="gear-number" id="gear-display">1</div>
+          <div class="manual-badge" id="manual-badge">M</div>
           <div class="digital-speed" id="speed-display">0</div>
           <div class="speed-unit">MPH</div>
         </div>
       </div>
-      <div class="handbrake-badge" id="handbrake-badge">HANDBRAKE</div>
-      <div class="drivetrain-badge" id="drivetrain-badge">DRIVETRAIN: RWD</div>
+      <div class="hud-badges-row">
+        <div class="hud-badge" id="handbrake-badge">HB</div>
+        <div class="hud-badge" id="clutch-badge">CLUTCH</div>
+        <div class="hud-badge" id="drivetrain-badge">RWD</div>
+      </div>
     `;
     this.container.appendChild(bottomRight);
 
     this.speedoCanvas = bottomRight.querySelector('#speedo-canvas') as HTMLCanvasElement;
     this.speedoCtx = this.speedoCanvas.getContext('2d')!;
     this.gearEl = bottomRight.querySelector('#gear-display') as HTMLElement;
+    this.manualBadge = bottomRight.querySelector('#manual-badge') as HTMLElement;
     this.digitalSpeedEl = bottomRight.querySelector('#speed-display') as HTMLElement;
     this.handbrakeBadge = bottomRight.querySelector('#handbrake-badge') as HTMLElement;
+    this.clutchBadge = bottomRight.querySelector('#clutch-badge') as HTMLElement;
     this.drivetrainBadge = bottomRight.querySelector('#drivetrain-badge') as HTMLElement;
   }
 
-  public update(telemetry: VehicleTelemetry): void {
-    // 1. Timer update
-    const elapsedMs = performance.now() - this.startTime;
-    const mins = Math.floor(elapsedMs / 60000);
-    const secs = Math.floor((elapsedMs % 60000) / 1000);
-    const ms = Math.floor(elapsedMs % 1000);
-    this.timerEl.textContent = `${mins}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')}`;
+  public update(telemetry: VehicleTelemetry, stageManager?: StageManager): void {
+    // 1. Stage Gameplay & Timer
+    if (stageManager) {
+      if (stageManager.state === 'COUNTDOWN') {
+        this.countdownEl.style.display = 'block';
+        const num = Math.ceil(stageManager.countdownTimerS);
+        this.countdownEl.textContent = num <= 0 ? 'GO!' : num.toString();
+        this.finishBannerEl.style.display = 'none';
+        this.timerEl.textContent = '00:00.00';
+      } else if (stageManager.state === 'RACING') {
+        this.countdownEl.style.display = 'none';
+        this.finishBannerEl.style.display = 'none';
+        this.timerEl.textContent = stageManager.formatTime(stageManager.stageTimeS);
+      } else if (stageManager.state === 'FINISHED') {
+        this.countdownEl.style.display = 'none';
+        this.finishBannerEl.style.display = 'block';
+        const fTime = this.finishBannerEl.querySelector('#finish-time');
+        if (fTime) fTime.textContent = stageManager.formatTime(stageManager.stageTimeS);
+      }
 
-    // 2. Speed & Gear
+      this.gateEl.textContent = `GATE ${Math.min(stageManager.totalGates, stageManager.currentGateIndex + 1)} OF ${stageManager.totalGates}`;
+
+      if (stageManager.bestTimeS) {
+        this.bestTimeEl.textContent = `BEST: ${stageManager.formatTime(stageManager.bestTimeS)}`;
+      }
+
+      // Split Pill
+      if (stageManager.lastSplitPill) {
+        this.splitPillEl.textContent = stageManager.lastSplitPill.text;
+        this.splitPillEl.classList.add('show');
+      } else {
+        this.splitPillEl.classList.remove('show');
+      }
+
+      // Pace Note
+      const pace = stageManager.getPaceNoteAhead();
+      this.updatePaceNote(pace);
+
+      // Distance counter in miles (1m = 0.000621371 miles)
+      const miles = stageManager.totalDistanceDrivenM * 0.000621371;
+      this.distanceEl.textContent = `${miles.toFixed(2)} mi`;
+    } else {
+      // Fallback sandbox timer
+      const elapsedMs = performance.now() - this.startTime;
+      const mins = Math.floor(elapsedMs / 60000);
+      const secs = Math.floor((elapsedMs % 60000) / 1000);
+      const ms = Math.floor((elapsedMs % 1000) / 10);
+      this.timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+    }
+
+    // 2. Speed & Gear & M
     const roundedSpeed = Math.round(telemetry.speedMph);
     this.digitalSpeedEl.textContent = roundedSpeed.toString();
     this.gearEl.textContent = telemetry.gear.toString();
 
-    // 3. Handbrake & Drivetrain Badges
+    // 3. Badges (HB, Clutch, Drivetrain)
     if (telemetry.handbrakeActive) {
-      this.handbrakeBadge.classList.add('active');
+      this.handbrakeBadge.classList.add('hb-active');
     } else {
-      this.handbrakeBadge.classList.remove('active');
+      this.handbrakeBadge.classList.remove('hb-active');
     }
 
-    this.drivetrainBadge.textContent = telemetry.isRwd ? 'DRIVETRAIN: RWD' : 'DRIVETRAIN: AWD';
+    if (telemetry.isShifting) {
+      this.clutchBadge.classList.add('clutch-active');
+    } else {
+      this.clutchBadge.classList.remove('clutch-active');
+    }
+
+    this.drivetrainBadge.textContent = telemetry.isRwd ? 'RWD' : 'AWD';
     this.drivetrainBadge.style.color = telemetry.isRwd ? '#f59e0b' : '#38bdf8';
 
     // 4. Input Telemetry Bars
     this.throttleBarFill.style.width = `${Math.round(telemetry.throttleInput * 100)}%`;
     this.brakeBarFill.style.width = `${Math.round(telemetry.brakeInput * 100)}%`;
 
-    // Steer fill is centered (-1 to +1)
-    const steerHalf = telemetry.steerInput * 50; // -50% to +50%
+    const steerHalf = telemetry.steerInput * 50;
     if (steerHalf >= 0) {
       this.steerBarFill.style.left = '50%';
       this.steerBarFill.style.width = `${steerHalf}%`;
@@ -398,8 +665,48 @@ export class TelemetryHUD {
     const surfaceLabel = telemetry.surfaceName ? `${telemetry.surfaceName.toUpperCase()} (${Math.round((telemetry.gripMultiplier ?? 0.72) * 100)}%)` : 'DIRT (72%)';
     this.gMeterEl.textContent = `LATERAL: ${telemetry.lateralG.toFixed(2)} G | ${surfaceLabel}`;
 
-    // 6. Draw Analog Speedometer Dial
+    // 6. Draw Analog Rev Arc Speedometer
     this.drawSpeedometer(telemetry.speedMph, telemetry.rpm);
+  }
+
+  private updatePaceNote(pace: PaceNote): void {
+    this.paceNoteTextEl.textContent = pace.code;
+
+    // SVG icon path based on turn curvature & direction
+    let iconPath = '';
+    if (pace.direction === 'left') {
+      if (pace.severity <= 2) {
+        iconPath = 'M18 19V11a5 5 0 0 0-5-5H6M6 6l4-4M6 6l4 4'; // Sharp hairpin left
+      } else {
+        iconPath = 'M16 19C16 12 14 7 7 6M7 6l4-4M7 6l3 5';   // Sweeping left
+      }
+    } else if (pace.direction === 'right') {
+      if (pace.severity <= 2) {
+        iconPath = 'M6 19V11a5 5 0 0 1 5-5h7M18 6l-4-4M18 6l-4 4'; // Sharp hairpin right
+      } else {
+        iconPath = 'M8 19C8 12 10 7 17 6M17 6l-4-4M17 6l-3 5';    // Sweeping right
+      }
+    } else {
+      if (pace.isCrest) {
+        iconPath = 'M3 16l9-9 9 9'; // Crest hill
+      } else {
+        iconPath = 'M12 19V5M5 12l7-7 7 7'; // Straight ahead
+      }
+    }
+
+    this.paceNoteIconEl.innerHTML = `<path d="${iconPath}" />`;
+
+    // Highlight border color based on curve severity
+    if (pace.severity <= 2) {
+      this.paceNoteBoxEl.style.borderColor = '#ef4444'; // Red for sharp/hairpin
+      this.paceNoteIconEl.style.stroke = '#ef4444';
+    } else if (pace.severity <= 4) {
+      this.paceNoteBoxEl.style.borderColor = '#f59e0b'; // Amber for medium
+      this.paceNoteIconEl.style.stroke = '#f59e0b';
+    } else {
+      this.paceNoteBoxEl.style.borderColor = '#eab308'; // Yellow for fast/flat
+      this.paceNoteIconEl.style.stroke = '#eab308';
+    }
   }
 
   private drawSpeedometer(speedMph: number, rpm: number): void {
@@ -412,55 +719,42 @@ export class TelemetryHUD {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Outer background ring
+    // Outer background rev arc
     const startAngle = Math.PI * 0.75;
     const endAngle = Math.PI * 2.25;
 
     ctx.lineWidth = 14;
     ctx.lineCap = 'round';
 
-    // Dark track background
+    // Dark track
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.beginPath();
     ctx.arc(cx, cy, radius, startAngle, endAngle);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
     ctx.stroke();
 
-    // Speed arc fill (Orange / Gold matching Screenshot 1 & 2)
-    const maxSpeed = 150;
-    const speedRatio = Math.min(1.0, Math.max(0, speedMph / maxSpeed));
-    const currentAngle = startAngle + (endAngle - startAngle) * speedRatio;
+    // Active RPM sweep
+    const maxRpm = 8000;
+    const rpmFrac = THREE.MathUtils.clamp((rpm - 1000) / (maxRpm - 1000), 0, 1);
+    const curAngle = startAngle + (endAngle - startAngle) * rpmFrac;
 
-    if (speedRatio > 0.01) {
+    if (rpmFrac > 0.01) {
+      const grad = ctx.createLinearGradient(0, h, w, 0);
+      grad.addColorStop(0, '#38bdf8');
+      grad.addColorStop(0.65, '#eab308');
+      grad.addColorStop(1, '#ef4444');
+
+      ctx.strokeStyle = grad;
       ctx.beginPath();
-      ctx.arc(cx, cy, radius, startAngle, currentAngle);
-      ctx.strokeStyle = '#ea580c'; // Saturated rally orange
-      ctx.stroke();
-
-      // Glow line
-      ctx.lineWidth = 4;
-      ctx.strokeStyle = '#fdba74';
+      ctx.arc(cx, cy, radius, startAngle, curAngle);
       ctx.stroke();
     }
 
-    // RPM tick marks (around perimeter)
-    const tickRadius = radius * 0.82;
-    const numTicks = 20;
-    for (let i = 0; i <= numTicks; i++) {
-      const angle = startAngle + (endAngle - startAngle) * (i / numTicks);
-      const isRedline = i >= numTicks * 0.75;
-      const tickLength = (i % 4 === 0) ? 12 : 6;
-
-      const x1 = cx + Math.cos(angle) * (tickRadius - tickLength);
-      const y1 = cy + Math.sin(angle) * (tickRadius - tickLength);
-      const x2 = cx + Math.cos(angle) * tickRadius;
-      const y2 = cy + Math.sin(angle) * tickRadius;
-
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.lineWidth = (i % 4 === 0) ? 3 : 1.5;
-      ctx.strokeStyle = isRedline ? '#ef4444' : 'rgba(255, 255, 255, 0.3)';
-      ctx.stroke();
-    }
+    // Redline indicator tick
+    const redlineAngle = startAngle + (endAngle - startAngle) * (7200 / maxRpm);
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 8, redlineAngle - 0.05, redlineAngle + 0.05);
+    ctx.stroke();
   }
 }

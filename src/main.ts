@@ -71,9 +71,9 @@ async function initGame() {
   const { VehicleEffects } = await import('./effects/VehicleEffects');
   const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
 
-  // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
-  const { VehicleEffects } = await import('./effects/VehicleEffects');
-  const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
+  // 7c. Stage Manager & 20 Checkpoint Gates (Phase 4)
+  const { StageManager } = await import('./gameplay/StageManager');
+  const stageManager = new StageManager(scene, rallyWorld, vehicle);
 
   // 8. Chase Camera
   const camera = new ChaseCamera(window.innerWidth / window.innerHeight);
@@ -163,9 +163,11 @@ async function initGame() {
 
   // Deterministic Video Recorder
   const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
-  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight);
+  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight, stageManager);
   (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
   (window as any).renderKeyboardVideo = () => videoRecorder.renderClipKeyboardFeel();
+  (window as any).stageManager = stageManager;
+  (window as any).restartStage = () => stageManager.restart();
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -321,9 +323,14 @@ async function initGame() {
       sunLight.target.position.copy(carPos);
     }
 
+    if (inputs.reset) {
+      stageManager.restart();
+    }
+    stageManager.update(frameDt);
+
     // Update Telemetry HUD & Debug Overlay
     const telemetry = vehicle.getTelemetry(inputs);
-    hud.update(telemetry);
+    hud.update(telemetry, stageManager);
     debugOverlay.update(telemetry);
 
     // Render Scene

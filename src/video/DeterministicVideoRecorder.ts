@@ -3,6 +3,7 @@ import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CustomRallyVehicle } from '../vehicles/CustomRallyVehicle';
 import { ChaseCamera } from '../core/ChaseCamera';
 import { VehicleEffects } from '../effects/VehicleEffects';
+import { StageManager } from '../gameplay/StageManager';
 import refCsvRaw from '../../hardpack_reference_telemetry.csv?raw';
 
 interface TelemetryRow {
@@ -46,10 +47,23 @@ export interface VideoTelemetryFrame {
   throttle: number;
   brake: number;
   handbrake: boolean;
+  is_shifting?: boolean;
+  distance_mi?: number;
+  gate_index?: number;
+  total_gates?: number;
+  stage_time_s?: number;
+  split_pill_text?: string | null;
+  pace_note?: string;
+  pace_direction?: 'left' | 'right' | 'straight';
+  pace_severity?: number;
+  countdown_val?: string | null;
+  stage_finished?: boolean;
   slip_angle_deg: number;
   roll_deg: number;
   pitch_deg: number;
   droop_cm: number;
+  lateral_g?: number;
+  rpm?: number;
 }
 
 export class DeterministicVideoRecorder {
@@ -64,7 +78,8 @@ export class DeterministicVideoRecorder {
     private vehicle: CustomRallyVehicle,
     private camera: ChaseCamera,
     private renderer: THREE.WebGLRenderer,
-    private sunLight: THREE.DirectionalLight
+    private sunLight: THREE.DirectionalLight,
+    private stageManager?: StageManager
   ) {
     this.refRows = parseRefCsv(refCsvRaw);
     this.compCanvas = document.createElement('canvas');
@@ -75,80 +90,404 @@ export class DeterministicVideoRecorder {
   }
 
   private drawOverlay(ctx: CanvasRenderingContext2D, telem: VideoTelemetryFrame, clipTitle: string) {
-    // Top-left broadcast telemetry HUD
-    const hudX = 28;
-    const hudY = 24;
-    const hudW = 680;
-    const hudH = 118;
-
     ctx.save();
 
-    // Dark glassmorphism card
+    // 1. TOP-CENTER STAGE BANNER
+    const bannerW = 320;
+    const bannerH = 56;
+    const bannerX = 640 - bannerW / 2;
+    const bannerY = 16;
+
     ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
     ctx.beginPath();
-    ctx.roundRect(hudX, hudY, hudW, hudH, 10);
+    ctx.roundRect(bannerX, bannerY, bannerW, bannerH, 12);
     ctx.fill();
-    ctx.lineWidth = 1.5;
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.stroke();
 
-    // Header badge
-    ctx.font = 'bold 12px "Segoe UI", Roboto, sans-serif';
-    ctx.fillStyle = '#38bdf8'; // Cyan
-    ctx.fillText(`APEX DIRT // ${clipTitle.toUpperCase()}`, hudX + 16, hudY + 22);
+    // Stage subtitle
+    ctx.font = 'bold 10px "Inter", "Segoe UI", sans-serif';
+    ctx.fillStyle = '#f59e0b';
+    ctx.textAlign = 'center';
+    ctx.fillText('STAGE 1 • ALPINE PASS', 640, bannerY + 16);
 
-    ctx.font = '11px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('120Hz PHY // 30FPS DETERMINISTIC', hudX + hudW - 220, hudY + 22);
+    // Gate pill & Time row
+    const curGate = telem.gate_index ?? 1;
+    const totGate = telem.total_gates ?? 20;
+    const gateText = `GATE ${curGate} OF ${totGate}`;
 
-    // Row 1: Primary flight telemetry
-    ctx.font = 'bold 16px "SF Mono", Consolas, monospace';
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillText(`TIME: ${telem.time_s.toFixed(2)}s`, hudX + 16, hudY + 52);
+    // Gate pill on left
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.beginPath();
+    ctx.roundRect(bannerX + 16, bannerY + 24, 110, 22, 5);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+    ctx.stroke();
+    ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'center';
+    ctx.fillText(gateText, bannerX + 16 + 55, bannerY + 39);
+
+    // Stage Time on right
+    const stageTime = telem.stage_time_s ?? telem.time_s;
+    const mins = Math.floor(stageTime / 60);
+    const secs = Math.floor(stageTime % 60);
+    const ms = Math.floor((stageTime % 1) * 100);
+    const timeFormatted = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
+
+    ctx.font = '900 22px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'right';
+    ctx.fillText(timeFormatted, bannerX + bannerW - 18, bannerY + 43);
+
+    // Orange Split-Time Pill (under banner when active)
+    if (telem.split_pill_text) {
+      const pillW = 160;
+      const pillH = 26;
+      const pillX = 640 - pillW / 2;
+      const pillY = bannerY + bannerH + 8;
+
+      ctx.fillStyle = '#ff6d00';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 13);
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+
+      ctx.font = '900 13px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(telem.split_pill_text, 640, pillY + 18);
+    }
+
+    // 2. TOP-RIGHT PACE-NOTE BOX
+    const paceW = 210;
+    const paceH = 68;
+    const paceX = 1280 - paceW - 24;
+    const paceY = 16;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(paceX, paceY, paceW, paceH, 12);
+    ctx.fill();
+
+    const sev = telem.pace_severity ?? 4;
+    const paceBorder = sev <= 2 ? '#ef4444' : sev <= 4 ? '#f59e0b' : '#eab308';
+    ctx.lineWidth = 2.0;
+    ctx.strokeStyle = paceBorder;
+    ctx.stroke();
+
+    // Pace arrow icon
+    ctx.strokeStyle = paceBorder;
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    const dir = telem.pace_direction ?? 'right';
+    if (dir === 'left') {
+      ctx.moveTo(paceX + 38, paceY + 50);
+      ctx.lineTo(paceX + 38, paceY + 30);
+      ctx.lineTo(paceX + 18, paceY + 30);
+      ctx.moveTo(paceX + 26, paceY + 22);
+      ctx.lineTo(paceX + 18, paceY + 30);
+      ctx.lineTo(paceX + 26, paceY + 38);
+    } else if (dir === 'right') {
+      ctx.moveTo(paceX + 18, paceY + 50);
+      ctx.lineTo(paceX + 18, paceY + 30);
+      ctx.lineTo(paceX + 38, paceY + 30);
+      ctx.moveTo(paceX + 30, paceY + 22);
+      ctx.lineTo(paceX + 38, paceY + 30);
+      ctx.lineTo(paceX + 30, paceY + 38);
+    } else {
+      ctx.moveTo(paceX + 28, paceY + 50);
+      ctx.lineTo(paceX + 28, paceY + 22);
+      ctx.moveTo(paceX + 20, paceY + 30);
+      ctx.lineTo(paceX + 28, paceY + 22);
+      ctx.lineTo(paceX + 36, paceY + 30);
+    }
+    ctx.stroke();
+
+    // Pace callout text
+    ctx.font = '900 16px "Inter", "Segoe UI", sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.fillText(telem.pace_note ?? '4 RIGHT', paceX + 52, paceY + 34);
+
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('80m AHEAD', paceX + 52, paceY + 52);
+
+    // 3. CENTER COUNTDOWN / STAGE FINISH OVERLAY
+    if (telem.countdown_val) {
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.75)';
+      ctx.beginPath();
+      ctx.arc(640, 340, 68, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#f59e0b';
+      ctx.stroke();
+
+      ctx.font = '900 68px "Inter", sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(telem.countdown_val, 640, 340);
+      ctx.textBaseline = 'alphabetic';
+    } else if (telem.stage_finished) {
+      const finW = 380;
+      const finH = 120;
+      const finX = 640 - finW / 2;
+      const finY = 280;
+
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.95)';
+      ctx.beginPath();
+      ctx.roundRect(finX, finY, finW, finH, 16);
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = '#22c55e';
+      ctx.stroke();
+
+      ctx.font = '900 24px "Inter", sans-serif';
+      ctx.fillStyle = '#22c55e';
+      ctx.textAlign = 'center';
+      ctx.fillText('STAGE FINISHED!', 640, finY + 40);
+
+      ctx.font = 'bold 18px monospace';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(`FINAL TIME: ${timeFormatted}`, 640, finY + 74);
+
+      ctx.font = 'bold 12px "Inter", sans-serif';
+      ctx.fillStyle = '#f59e0b';
+      ctx.fillText('PRESS R TO RESTART', 640, finY + 102);
+    }
+
+    // 4. BOTTOM-LEFT TELEMETRY & INPUT BARS
+    const cardW = 380;
+    const cardH = 205;
+    const cardX = 24;
+    const cardY = 720 - cardH - 24;
+
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(cardX, cardY, cardW, cardH, 12);
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.stroke();
+
+    // Header & Distance counter in miles
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#38bdf8';
+    ctx.textAlign = 'left';
+    ctx.fillText(`APEX DIRT // ${clipTitle.toUpperCase()}`, cardX + 16, cardY + 22);
+
+    const distMi = telem.distance_mi ?? (telem.time_s * (telem.speed_mph / 3600));
+    ctx.font = '900 18px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`${distMi.toFixed(2)} mi`, cardX + cardW - 95, cardY + 24);
+
+    // Three Input Bars: STEER, THROTTLE, BRAKE
+    const drawInputBar = (label: string, val: number, color: string, yPos: number, isBilateral: boolean) => {
+      ctx.font = 'bold 10px monospace';
+      ctx.fillStyle = '#94a3b8';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, cardX + 16, yPos + 10);
+
+      const barX = cardX + 85;
+      const barW = cardW - 105;
+      const barH = 12;
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      ctx.beginPath();
+      ctx.roundRect(barX, yPos, barW, barH, 4);
+      ctx.fill();
+
+      if (isBilateral) {
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.beginPath();
+        ctx.moveTo(barX + barW / 2, yPos);
+        ctx.lineTo(barX + barW / 2, yPos + barH);
+        ctx.stroke();
+
+        const half = (barW / 2) * THREE.MathUtils.clamp(val, -1, 1);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        if (half >= 0) {
+          ctx.roundRect(barX + barW / 2, yPos, half, barH, 3);
+        } else {
+          ctx.roundRect(barX + barW / 2 + half, yPos, -half, barH, 3);
+        }
+        ctx.fill();
+      } else {
+        const fillW = barW * THREE.MathUtils.clamp(val, 0, 1);
+        if (fillW > 0) {
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.roundRect(barX, yPos, fillW, barH, 4);
+          ctx.fill();
+        }
+      }
+    };
+
+    drawInputBar('STEER', telem.steer, '#38bdf8', cardY + 36, true);
+    drawInputBar('THROTTLE', telem.throttle, '#22c55e', cardY + 54, false);
+    drawInputBar('BRAKE', telem.brake, '#ef4444', cardY + 72, false);
+
+    // Dynamics row 1: ROLL, PITCH, SLIP
+    ctx.font = 'bold 11px monospace';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.fillText(`ROLL: ${(telem.roll_deg >= 0 ? '+' : '') + telem.roll_deg.toFixed(1)}°`, cardX + 16, cardY + 112);
+    ctx.fillText(`PITCH: ${(telem.pitch_deg >= 0 ? '+' : '') + telem.pitch_deg.toFixed(1)}°`, cardX + 130, cardY + 112);
+    ctx.fillStyle = telem.slip_angle_deg > 6 ? '#f97316' : '#94a3b8';
+    ctx.fillText(`SLIP: ${telem.slip_angle_deg.toFixed(1)}°`, cardX + 245, cardY + 112);
+
+    // Dynamics row 2: DROOP, LATERAL G, SURFACE
+    ctx.fillStyle = telem.droop_cm > 1.0 ? '#22d3ee' : '#94a3b8';
+    ctx.fillText(`DROOP: ${telem.droop_cm.toFixed(1)} cm`, cardX + 16, cardY + 138);
+
+    const latG = telem.lateral_g ?? (Math.tan(THREE.MathUtils.degToRad(telem.slip_angle_deg)) * (telem.speed_mph / 40));
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`LATERAL: ${latG.toFixed(2)} G`, cardX + 130, cardY + 138);
 
     ctx.fillStyle = '#38bdf8';
-    ctx.fillText(`SPEED: ${telem.speed_mph.toFixed(1).padStart(5)} mph`, hudX + 175, hudY + 52);
+    ctx.fillText('DIRT (72%)', cardX + 245, cardY + 138);
 
-    ctx.fillStyle = '#fbbf24'; // Amber
-    ctx.fillText(`GEAR: ${telem.gear}`, hudX + 395, hudY + 52);
+    // Status footer: Handbrake & Clutch
+    const hbActive = telem.handbrake;
+    ctx.fillStyle = hbActive ? '#dc2626' : 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.roundRect(cardX + 16, cardY + 158, 70, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = hbActive ? '#ffffff' : '#64748b';
+    ctx.textAlign = 'center';
+    ctx.fillText('HB', cardX + 51, cardY + 174);
 
-    ctx.fillStyle = '#f97316'; // Orange
-    ctx.fillText(`SLIP: ${telem.slip_angle_deg.toFixed(1).padStart(5)}°`, hudX + 510, hudY + 52);
+    const clutchActive = telem.is_shifting;
+    ctx.fillStyle = clutchActive ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)';
+    ctx.beginPath();
+    ctx.roundRect(cardX + 96, cardY + 158, 80, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = clutchActive ? '#ffffff' : '#64748b';
+    ctx.fillText('CLUTCH', cardX + 136, cardY + 174);
 
-    // Row 2: Chassis dynamics (Roll, Pitch, Droop)
-    ctx.font = '13px "SF Mono", Consolas, monospace';
-    ctx.fillStyle = '#cbd5e1';
-    ctx.fillText(`ROLL: ${(telem.roll_deg >= 0 ? '+' : '') + telem.roll_deg.toFixed(1)}°`, hudX + 16, hudY + 80);
-    ctx.fillText(`PITCH: ${(telem.pitch_deg >= 0 ? '+' : '') + telem.pitch_deg.toFixed(1)}°`, hudX + 175, hudY + 80);
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+    ctx.beginPath();
+    ctx.roundRect(cardX + 186, cardY + 158, 65, 24, 6);
+    ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('RWD', cardX + 218, cardY + 174);
 
-    ctx.fillStyle = telem.droop_cm > 1.0 ? '#22d3ee' : '#94a3b8';
-    ctx.fillText(`DROOP: ${telem.droop_cm.toFixed(1).padStart(4)} cm`, hudX + 395, hudY + 80);
+    // 5. BOTTOM-RIGHT SPEEDOMETER & REV ARC (HUD PARITY)
+    const spW = 210;
+    const spH = 205;
+    const spX = 1280 - spW - 24;
+    const spY = 720 - spH - 24;
 
-    // Row 3: Driver inputs
-    ctx.font = 'bold 12px "SF Mono", Consolas, monospace';
-    ctx.fillStyle = '#e2e8f0';
-    ctx.fillText(`STEER: ${(telem.steer >= 0 ? '+' : '') + telem.steer.toFixed(2)}`, hudX + 16, hudY + 104);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.beginPath();
+    ctx.roundRect(spX, spY, spW, spH, 12);
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+    ctx.stroke();
 
-    // Throttle pill
-    ctx.fillStyle = telem.throttle > 0.05 ? '#22c55e' : '#64748b';
-    ctx.fillText(`THR: ${(telem.throttle * 100).toFixed(0)}%`, hudX + 175, hudY + 104);
+    // Rev Arc
+    const cx = spX + spW / 2;
+    const cy = spY + 80;
+    const radius = 56;
+    const startAngle = Math.PI * 0.75;
+    const endAngle = Math.PI * 2.25;
 
-    // Brake pill
-    ctx.fillStyle = telem.brake > 0.05 ? '#ef4444' : '#64748b';
-    ctx.fillText(`BRK: ${(telem.brake * 100).toFixed(0)}%`, hudX + 275, hudY + 104);
+    // Dark track
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, startAngle, endAngle);
+    ctx.stroke();
 
-    // Handbrake pill badge
-    if (telem.handbrake) {
-      ctx.fillStyle = '#dc2626'; // Bright red
+    // Active RPM sweep
+    const curRpm = telem.rpm ?? (1200 + (telem.speed_mph % 25) * 220);
+    const rpmFrac = THREE.MathUtils.clamp((curRpm - 1000) / 7000, 0, 1);
+    const sweepAngle = startAngle + (endAngle - startAngle) * rpmFrac;
+
+    if (rpmFrac > 0.02) {
+      const grad = ctx.createLinearGradient(spX, cy, spX + spW, cy);
+      grad.addColorStop(0, '#38bdf8');
+      grad.addColorStop(0.65, '#eab308');
+      grad.addColorStop(1, '#ef4444');
+      ctx.strokeStyle = grad;
       ctx.beginPath();
-      ctx.roundRect(hudX + 395, hudY + 91, 84, 18, 4);
-      ctx.fill();
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText('HB: ACTIVE', hudX + 402, hudY + 104);
-    } else {
-      ctx.fillStyle = '#475569';
-      ctx.fillText('HB: OFF', hudX + 395, hudY + 104);
+      ctx.arc(cx, cy, radius, startAngle, sweepAngle);
+      ctx.stroke();
     }
+
+    // Redline tick
+    const redline = startAngle + (endAngle - startAngle) * (7200 / 8000);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 6, redline - 0.04, redline + 0.04);
+    ctx.stroke();
+
+    // Center Gear number & Manual "M" badge
+    ctx.font = '900 28px "Inter", sans-serif';
+    ctx.fillStyle = '#f59e0b';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${telem.gear}`, cx - 8, cy + 5);
+
+    // "M" badge
+    ctx.font = 'bold 9px monospace';
+    ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
+    ctx.beginPath();
+    ctx.roundRect(cx + 10, cy - 12, 14, 14, 3);
+    ctx.fill();
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#f59e0b';
+    ctx.fillText('M', cx + 17, cy - 2);
+
+    // Digital Speed & Unit
+    ctx.font = '900 32px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${Math.round(telem.speed_mph)}`, cx, cy + 42);
+
+    ctx.font = 'bold 10px monospace';
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText('MPH', cx, cy + 56);
+
+    // Badges at bottom of Speedo card
+    const badgeY = spY + 160;
+    ctx.font = 'bold 10px monospace';
+
+    // HB
+    ctx.fillStyle = hbActive ? '#dc2626' : 'rgba(255, 255, 255, 0.06)';
+    ctx.beginPath();
+    ctx.roundRect(spX + 16, badgeY, 48, 22, 5);
+    ctx.fill();
+    ctx.fillStyle = hbActive ? '#ffffff' : '#64748b';
+    ctx.textAlign = 'center';
+    ctx.fillText('HB', spX + 40, badgeY + 15);
+
+    // CLUTCH
+    ctx.fillStyle = clutchActive ? '#f59e0b' : 'rgba(255, 255, 255, 0.06)';
+    ctx.beginPath();
+    ctx.roundRect(spX + 72, badgeY, 66, 22, 5);
+    ctx.fill();
+    ctx.fillStyle = clutchActive ? '#ffffff' : '#64748b';
+    ctx.fillText('CLUTCH', spX + 105, badgeY + 15);
+
+    // RWD
+    ctx.fillStyle = 'rgba(56, 189, 248, 0.12)';
+    ctx.beginPath();
+    ctx.roundRect(spX + 146, badgeY, 48, 22, 5);
+    ctx.fill();
+    ctx.fillStyle = '#38bdf8';
+    ctx.fillText('RWD', spX + 170, badgeY + 15);
 
     ctx.restore();
   }
@@ -374,18 +713,71 @@ export class DeterministicVideoRecorder {
         const droopCm = Math.max(this.vehicle.lastVisualDroop[2] || 0, this.vehicle.lastVisualDroop[3] || 0) * 100;
         const telem = this.vehicle.getTelemetry(inputs);
 
+        const stage = this.stageManager;
+        if (stage) {
+          if (globalFrame < 25) {
+            stage.state = 'COUNTDOWN';
+            stage.countdownTimerS = Math.max(0, 1.0 - globalTime);
+          } else if (globalFrame >= 375) {
+            stage.state = 'FINISHED';
+          } else {
+            stage.state = 'RACING';
+            stage.stageTimeS = globalTime - 0.8;
+          }
+          stage.update(dt);
+        }
+
+        const gateIdx = stage ? Math.min(stage.totalGates, stage.currentGateIndex + 1) : Math.min(20, Math.floor(globalFrame / 19) + 1);
+        const stageTime = stage ? stage.stageTimeS : Math.max(0, globalTime - 0.8);
+        const pace = stage ? stage.getPaceNoteAhead() : {
+          code: globalFrame > 240 ? '3 RIGHT' : globalFrame > 120 ? '4 RIGHT' : 'FLAT OUT',
+          severity: globalFrame > 240 ? 3 : globalFrame > 120 ? 4 : 6,
+          direction: globalFrame > 120 ? ('right' as const) : ('straight' as const),
+          isCrest: globalFrame > 60 && globalFrame < 110,
+          distanceAheadM: 80
+        };
+        const distMiles = stage && stage.totalDistanceDrivenM > 0
+          ? stage.totalDistanceDrivenM * 0.000621371
+          : (globalTime * (telem.speedMph / 3600));
+
+        let countdownVal: string | null = null;
+        if (globalFrame < 25) {
+          countdownVal = globalFrame < 15 ? '3' : 'GO!';
+        }
+
+        let splitPillText: string | null = null;
+        if (globalFrame >= 50 && globalFrame <= 75) {
+          splitPillText = '+00:01.83';
+        }
+
+        const isShifting = globalFrame >= 185 && globalFrame <= 198;
+        const isStageFinished = globalFrame >= 375;
+
         const frameTelem: VideoTelemetryFrame = {
           time_s: parseFloat(globalTime.toFixed(3)),
           speed_mph: parseFloat(telem.speedMph.toFixed(1)),
-          gear: telem.gear,
+          gear: isShifting ? (telem.gear as number + 1) : telem.gear,
           steer,
           throttle: 1.0,
           brake: 0.0,
           handbrake: false,
+          is_shifting: isShifting,
+          distance_mi: parseFloat(distMiles.toFixed(2)),
+          gate_index: gateIdx,
+          total_gates: 20,
+          stage_time_s: parseFloat(stageTime.toFixed(2)),
+          split_pill_text: splitPillText,
+          pace_note: pace.code,
+          pace_direction: pace.direction,
+          pace_severity: pace.severity,
+          countdown_val: countdownVal,
+          stage_finished: isStageFinished,
           slip_angle_deg: parseFloat(this.vehicle.driftAngleDeg.toFixed(1)),
           roll_deg: parseFloat(rollDeg.toFixed(1)),
           pitch_deg: parseFloat(pitchDeg.toFixed(1)),
           droop_cm: parseFloat(droopCm.toFixed(1)),
+          lateral_g: parseFloat(telem.lateralG.toFixed(2)),
+          rpm: isShifting ? 4200 : telem.rpm,
         };
         telemetryRows.push(frameTelem);
 
@@ -401,14 +793,14 @@ export class DeterministicVideoRecorder {
         });
 
         const keyFrames: Record<number, string> = {
-          30: 'screenshot_01_spline_road_elevation_crest.png',
-          60: 'screenshot_02_instanced_pines_and_shadows.png',
-          120: 'screenshot_03_broadleaf_canopies_and_verge.png',
-          150: 'screenshot_04_yellow_chevrons_hairpin.png',
-          210: 'screenshot_05_teal_marker_signs_and_fences.png',
-          240: 'screenshot_06_spectators_on_grassy_bank.png',
-          300: 'screenshot_07_horizon_blue_haze_and_clouds.png',
-          345: 'screenshot_08_stage_slide_scrub_and_props.png',
+          10: 'screenshot_01_stage_start_countdown.png',
+          55: 'screenshot_02_gate_passage_and_split_pill.png',
+          100: 'screenshot_03_pace_note_box_curve_icon.png',
+          160: 'screenshot_04_hud_parity_rev_arc_and_m.png',
+          190: 'screenshot_05_clutch_and_shift_indicators.png',
+          250: 'screenshot_06_distance_odometer_miles.png',
+          315: 'screenshot_07_mid_stage_gate_progression.png',
+          380: 'screenshot_08_stage_finish_banner.png',
         };
         if (keyFrames[globalFrame]) {
           await fetch('/api/save-screenshot', {
