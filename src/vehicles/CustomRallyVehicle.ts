@@ -99,7 +99,7 @@ export interface CustomVehicleTuning {
 // Axle-average unload fraction (1 - Fz/steadyFz) at which droop starts / reaches full. Chosen from the measured
 // replay loads (measured rear-axle mean unload: ~0.27 at 2.5 s, ~0.19 at 2.8 s, ~0.18 at 3.2 s, ~0.10 at 3.8 s). Tune these two
 // constants from lane3_frames.ts output; never by editing lane3_spec.ts.
-const VISUAL_DROOP_UNLOAD_START = 0.12;
+const VISUAL_DROOP_UNLOAD_START = 0.14;
 const VISUAL_DROOP_UNLOAD_FULL = 0.22;
 export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
