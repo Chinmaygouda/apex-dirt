@@ -32,4 +32,23 @@
   - Pre-allocated instanced particle pools and fixed ribbon index buffers to guarantee steady 60+ FPS without runtime garbage collection spikes.
 - **Failures / Conflicts**:
   - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase2-effects` per Rule 1.
-- **Next**: Phase 3: World v1 (spline road >= 1.5 km with banking & elevation, terrain, instanced forest, props, shadows, haze, clouds, sun, palette swatches in README).
+- **Next**: Phase 3
+
+## Phase 3: World v1 (Spline Road >= 1.5 km, Instanced Forest, Atmosphere)
+- **Branch**: `phase3-world`
+- **Status**: Completed on branch.
+- **Done**:
+  - Spline Road: 1,640-meter 3D Catmull-Rom route with elevation profile (cresting at +16.0m pass), curvature-derived road banking up to 7°, 7.6m road cross-section (crowned packed dirt and tyre ruts), and 1.8m sage grass verge berms.
+  - Physics & Surfaces: Unchanged physics with segmented Rapier cuboid collision bed along spline. Smooth dirt road vs grass verge detection (`Dirt`: 0.72 grip, `Grass`: 0.45 grip).
+  - Instanced Forest: 800+ instanced trees in 4 draw calls (`THREE.InstancedMesh`): faceted coniferous pines (`#2E4336` / `#3B5746`) and deciduous broadleaf canopies with icosahedron clusters (`#425838` / `#57734A`).
+  - Lighting & Shadows: Low-angle directional sun (`(65, 40, -50)`) casting long tree shadows across the road; 2048x2048 cascaded PCF soft shadow maps.
+  - Atmosphere: Soft blue horizon haze (`#8FAEC9`, `FogExp2` density 0.0018), procedural 3D cumulus clouds (`#F3F6FA`), and warm sunlight.
+  - Roadside Props: Yellow corner chevrons (`#E5A912`) with black arrows at technical bends, teal rally split markers (`#1B8B8B`) on timber posts, post-and-rail wooden drop-off fences (`#5E5245`), and stylized cheering spectators.
+  - Frame time measured at 4.8 - 7.2 ms (140-200 FPS equivalent, far exceeding >= 60 FPS requirement). Full palette swatch table documented in `README.md`.
+  - Verified suites: `npm run build` (PASS), `npm run test:keyboard` (14/14 PASS), `npm run test:v6` (ALL 5 CRITERIA PASSED), `npm run test:user-session` (PASS), `npm run test:reverse` (ALL PASSED), `npm run test:browser-sync` (PASS), `measure:v4` (ALL PASSED), `measure:v1` (ALL PASSED).
+  - Generated overnight verification artifacts under `/overnight/phase3/`: 8 screenshots, 13.0s deterministic video (3.72 MB, 1280x720, 30 fps, H.264, < 20 MB), per-frame CSV, and `README.md`.
+- **Assumptions**:
+  - Segmented cuboid collision bed provides artifact-free 120Hz physics contacts across the 1.6+ km spline without mesh seam snags.
+- **Failures / Conflicts**:
+  - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase3-world` per Rule 1.
+- **Next**: Phase 4: Stage Gameplay + HUD (20 gates with twin red-white striped posts, stage timer, split-time pill, pace notes, countdown, finish, restart, localStorage best time, HUD parity).

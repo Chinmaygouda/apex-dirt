@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CustomRallyVehicle } from '../vehicles/CustomRallyVehicle';
 import { ChaseCamera } from '../core/ChaseCamera';
+import { VehicleEffects } from '../effects/VehicleEffects';
 import refCsvRaw from '../../hardpack_reference_telemetry.csv?raw';
 
 interface TelemetryRow {
@@ -55,6 +56,7 @@ export class DeterministicVideoRecorder {
   private refRows: TelemetryRow[];
   private compCanvas: HTMLCanvasElement;
   private compCtx: CanvasRenderingContext2D;
+  private effects: VehicleEffects;
 
   constructor(
     private scene: THREE.Scene,
@@ -69,6 +71,7 @@ export class DeterministicVideoRecorder {
     this.compCanvas.width = 1280;
     this.compCanvas.height = 720;
     this.compCtx = this.compCanvas.getContext('2d')!;
+    this.effects = new VehicleEffects(scene, vehicle, physics);
   }
 
   private drawOverlay(ctx: CanvasRenderingContext2D, telem: VideoTelemetryFrame, clipTitle: string) {
@@ -355,6 +358,7 @@ export class DeterministicVideoRecorder {
 
         this.vehicle.updateVisuals(inputs, dt);
         this.camera.update(this.vehicle, dt);
+        this.effects.update(dt, inputs, this.camera.camera, this.sunLight);
 
         if (this.vehicle.chassisMesh) {
           const carPos = this.vehicle.chassisMesh.position;
@@ -386,6 +390,7 @@ export class DeterministicVideoRecorder {
         telemetryRows.push(frameTelem);
 
         this.compCtx.drawImage(this.renderer.domElement, 0, 0, 1280, 720);
+        this.effects.renderSunGlare(this.compCtx, 1280, 720);
         this.drawOverlay(this.compCtx, frameTelem, `Keyboard Feel: ${seg.name}`);
 
         const dataUrl = this.compCanvas.toDataURL('image/png');
@@ -394,6 +399,24 @@ export class DeterministicVideoRecorder {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ clipId, frameIndex: globalFrame, dataUrl })
         });
+
+        const keyFrames: Record<number, string> = {
+          30: 'screenshot_01_spline_road_elevation_crest.png',
+          60: 'screenshot_02_instanced_pines_and_shadows.png',
+          120: 'screenshot_03_broadleaf_canopies_and_verge.png',
+          150: 'screenshot_04_yellow_chevrons_hairpin.png',
+          210: 'screenshot_05_teal_marker_signs_and_fences.png',
+          240: 'screenshot_06_spectators_on_grassy_bank.png',
+          300: 'screenshot_07_horizon_blue_haze_and_clouds.png',
+          345: 'screenshot_08_stage_slide_scrub_and_props.png',
+        };
+        if (keyFrames[globalFrame]) {
+          await fetch('/api/save-screenshot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: keyFrames[globalFrame], dataUrl })
+          });
+        }
 
         if (globalFrame % 30 === 0) {
           console.log(`[Keyboard Feel] Frame ${globalFrame}/${390} (t=${globalTime.toFixed(2)}s) rendered.`);
