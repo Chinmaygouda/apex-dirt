@@ -14,7 +14,7 @@ for (let i = 1; i < lines.length; i++) {
   const p = lines[i].split(',').map(x => x.trim()); if (p.length < 10) continue;
   rows.push({ t: parseFloat(p[1]), mph: parseFloat(p[3]), throttle: parseFloat(p[5]), brake: parseFloat(p[6]), steer: parseFloat(p[8]), hb: parseInt(p[9], 10) === 1 });
 }
-type Frame = { t: number; roll: number; pitch: number; droop: number[]; fz: number[]; slip: number; latG: number; offAxis: number; horizon: number; camPos: THREE.Vector3; carPos: THREE.Vector3 };
+type Frame = { t: number; roll: number; pitch: number; droop: number[]; fz: number[]; slip: number; latG: number; offAxis: number; horizon: number; camPos: THREE.Vector3; carPos: THREE.Vector3; sr: number[] };
 
 async function run(flipVisualHandbrake: boolean, trunks: { x: number; z: number; r: number }[] = []): Promise<Frame[]> {
   const physics = new PhysicsWorld(); await physics.init();
@@ -47,7 +47,7 @@ async function run(flipVisualHandbrake: boolean, trunks: { x: number; z: number;
       t: r.t, roll: vehicle.getVisualRollDeg(), pitch: vehicle.getVisualPitchDeg(), droop: [...vehicle.lastVisualDroop],
       fz: [...((vehicle as any).wheelNormalForces as number[])], slip: vehicle.driftAngleDeg, latG: (vehicle as any).smoothedLateralG,
       offAxis: THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(fwd.dot(cd), -1, 1))), horizon: cam.currentHorizonRollDeg,
-      camPos: cam.camera.position.clone(), carPos: new THREE.Vector3(tr.x, tr.y, tr.z),
+      camPos: cam.camera.position.clone(), carPos: new THREE.Vector3(tr.x, tr.y, tr.z), sr: [...((vehicle as any).wheelSlipRatios as number[])],
     });
   }
   return out;
@@ -63,6 +63,11 @@ console.log('t(s)  speed slip   latG   roll   pitch  droop FL/FR/RL/RR (m)      
 for (const t of S.frameTimesS) {
   const f = near(A, t);
   console.log(`${t.toFixed(1)}  ${rows.find(r => r.t >= t)!.mph.toFixed(0).padStart(5)} ${f.slip.toFixed(1).padStart(6)} ${f.latG.toFixed(2).padStart(6)} ${f.roll.toFixed(2).padStart(6)} ${f.pitch.toFixed(2).padStart(6)}  ${f.droop.map(d => d.toFixed(3)).join(' ')}   ${f.fz.map(z => String(Math.round(z)).padStart(5)).join(' ')}   ${f.offAxis.toFixed(1).padStart(5)}  ${f.horizon.toFixed(2).padStart(6)}`);
+}
+
+console.log('\nTRACE (measurement only, not scored): t  rearDroop(RL,RR)  slipRatio FL/FR/RL/RR  Fz rear mean  latG');
+for (const fr of A.filter((fr, i) => i % 3 === 0 && fr.t >= 1.9 && fr.t <= 3.9)) {
+  console.log(`${fr.t.toFixed(2)}  ${fr.droop[2].toFixed(3)},${fr.droop[3].toFixed(3)}  ${fr.sr.map(s => s.toFixed(2)).join(' ')}  ${((fr.fz[2] + fr.fz[3]) / 2).toFixed(0)}  ${fr.latG.toFixed(2)}`);
 }
 const res: [string, boolean, string][] = [];
 const chk = (n: string, ok: boolean, d: string) => res.push([n, ok, d]);
