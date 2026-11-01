@@ -96,12 +96,11 @@ export interface CustomVehicleTuning {
 
 
 // Lane 3 visual droop calibration (visual only; no physics reads these).
-// Static per-wheel normal force (same constant the old rear-droop code used) and the unload fraction
-// at which a wheel starts / finishes visibly hanging. START/FULL are first estimates: tune them from
-// the lane3_frames.ts table, never by editing lane3_spec.ts.
-const VISUAL_STATIC_WHEEL_FZ_N = 2893;
-const VISUAL_DROOP_UNLOAD_START = 0.55;
-const VISUAL_DROOP_UNLOAD_FULL = 0.95;
+// Axle-average unload fraction (1 - Fz/steadyFz) at which droop starts / reaches full. Chosen from the measured
+// replay loads (measured rear-axle mean unload: ~0.27 at 2.5 s, ~0.19 at 2.8 s, ~0.18 at 3.2 s, ~0.10 at 3.8 s). Tune these two
+// constants from lane3_frames.ts output; never by editing lane3_spec.ts.
+const VISUAL_DROOP_UNLOAD_START = 0.12;
+const VISUAL_DROOP_UNLOAD_FULL = 0.22;
 export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
@@ -234,6 +233,9 @@ export class CustomRallyVehicle {
   private currentVisualRoll: number = 0;
   private droopTransient: number = 0;
   public lastVisualDroop: number[] = [0, 0, 0, 0];
+  // Lane 3: steady-state (|G| < 0.12) per-wheel normal force, self-calibrated so droop never depends on a hard-coded load.
+  private visualStaticFz: number[] = [0, 0, 0, 0];
+  private visualStaticValid = false;
 
   // Powertrain & Gearing State (V1)
   public isShifting: boolean = false;
@@ -1159,10 +1161,26 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Lane 3: per-wheel droop driven ONLY by how far each wheel is unloaded (normal force vs static
-    // load) or airborne. No input flag (key, handbrake) is read. All four wheels use the same rule,
-    // so left/right (and front/rear) behaviour is symmetric by construction.
+    // Lane 3: droop driven ONLY by how far each axle is unloaded relative to its own steady-state load (or a wheel
+    // being airborne). No input flag (key, handbrake) is read. The unload is averaged over the two wheels of an axle,
+    // so lateral load transfer (roll) cancels and left/right droop is symmetric by construction.
     const maxWheelDroop = this.tuning.visualDroopExtension * exag;
+    const steadyNow = Math.abs(this.smoothedLongitudinalG) < 0.12 && Math.abs(this.smoothedLateralG) < 0.12 &&
+      this.wheelInContact.every(c => c) && this.wheelNormalForces.every(f => f > 0);
+    if (steadyNow) {
+      if (!this.visualStaticValid) {
+        for (let k = 0; k < 4; k++) this.visualStaticFz[k] = this.wheelNormalForces[k];
+        this.visualStaticValid = true;
+      } else {
+        const a = Math.min(1.0, 1.0 * frameDt);
+        for (let k = 0; k < 4; k++) this.visualStaticFz[k] += (this.wheelNormalForces[k] - this.visualStaticFz[k]) * a;
+      }
+    }
+    const fallbackFz = (this.chassisBody.mass() * 9.81) / 4;
+    const unloadRaw = [0, 1, 2, 3].map(k => !this.wheelInContact[k]
+      ? 1.0
+      : 1.0 - (this.wheelNormalForces[k] || 0) / Math.max(500, this.visualStaticValid ? this.visualStaticFz[k] : fallbackFz));
+    const axleUnload = [(unloadRaw[0] + unloadRaw[1]) * 0.5, (unloadRaw[2] + unloadRaw[3]) * 0.5];
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1173,7 +1191,7 @@ export class CustomRallyVehicle {
       const suspLen = this.currentSuspensionLengths[i];
 
       const unload = this.wheelInContact[i]
-        ? THREE.MathUtils.clamp(1.0 - (this.wheelNormalForces[i] || 0) / VISUAL_STATIC_WHEEL_FZ_N, 0, 1)
+        ? THREE.MathUtils.clamp(axleUnload[i < 2 ? 0 : 1], 0, 1)
         : 1.0;
       const targetWheelDroop = maxWheelDroop * THREE.MathUtils.smoothstep(unload, VISUAL_DROOP_UNLOAD_START, VISUAL_DROOP_UNLOAD_FULL);
       const currentDroop = this.lastVisualDroop[i] || 0;
@@ -1244,6 +1262,7 @@ export class CustomRallyVehicle {
     this.currentVisualRoll = 0;
     this.droopTransient = 0;
     this.lastVisualDroop = [0, 0, 0, 0];
+    this.visualStaticValid = false;
     this.currentRpm = this.tuning.idleRpm;
     this.isShifting = false;
     this.shiftTimer = 0;

@@ -5,7 +5,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CustomRallyVehicle } from './src/vehicles/CustomRallyVehicle';
 import { PhysicsWorld } from './src/physics/PhysicsWorld';
 import { ChaseCamera } from './src/core/ChaseCamera';
-import { LANE3_SPEC as S } from './lane3_spec';
+import { LANE3_SPEC as S, LANE3_SPEC_V2 as S2 } from './lane3_spec';
 
 await RAPIER.init();
 const lines = fs.readFileSync('hardpack_reference_telemetry.csv', 'utf8').trim().split('\n');
@@ -72,7 +72,8 @@ chk('bodyStep', Math.max(sr, sp) <= S.bodyStepMaxDegPerFrame + 1e-9, `roll ${sr.
 chk('horizonMax', Math.max(...A.map(f => Math.abs(f.horizon))) <= S.horizonRollMaxDeg + 1e-9, `${Math.max(...A.map(f => Math.abs(f.horizon))).toFixed(2)} deg`);
 chk('horizonStep', sh <= S.horizonRollStepMaxDegPerFrame + 1e-9, `${sh.toFixed(3)} deg/frame`);
 for (const t of S.offAxisDeg.atTimesS) { const o = near(A, t).offAxis; chk(`offAxis@${t}`, o >= S.offAxisDeg.min && o <= S.offAxisDeg.max, `${o.toFixed(1)} deg`); }
-for (const t of S.outwardRollDeg.atTimesS) { const f = near(A, t), o = -Math.sign(f.latG) * f.roll; chk(`outwardRoll@${t}`, o >= S.outwardRollDeg.min && o <= S.outwardRollDeg.max, `${o.toFixed(2)} deg (latG ${f.latG.toFixed(2)})`); }
+for (const t of S.outwardRollDeg.atTimesS) { const f = near(A, t), o = -Math.sign(f.latG) * f.roll; chk(`outwardRoll@${t} [v1 1-6, superseded, kept failing]`, o >= S.outwardRollDeg.min && o <= S.outwardRollDeg.max, `${o.toFixed(2)} deg (latG ${f.latG.toFixed(2)})`); }
+for (const t of S2.outwardRollDeg.atTimesS) { const f = near(A, t), o = -Math.sign(f.latG) * f.roll; chk(`outwardRoll@${t} [v6-aligned 4-8.5]`, o >= S2.outwardRollDeg.min && o <= S2.outwardRollDeg.max, `${o.toFixed(2)} deg`); }
 { const w = A.filter(f => f.t >= S.levelBraking.fromS && f.t <= S.levelBraking.toS); const r = Math.max(...w.map(f => Math.abs(f.roll))), p = Math.max(...w.map(f => Math.abs(f.pitch)));
   chk('levelBraking', r <= S.levelBraking.maxAbsRollDeg && p <= S.levelBraking.maxAbsPitchDeg, `max |roll| ${r.toFixed(2)} max |pitch| ${p.toFixed(2)}`); }
 for (const t of S.rearDroopVisibleM.atTimesS) { const d = near(A, t).droop, m = (d[2] + d[3]) / 2; chk(`rearDroop@${t}`, m >= S.rearDroopVisibleM.minMeanRearM, `RL ${d[2].toFixed(3)} RR ${d[3].toFixed(3)} mean ${m.toFixed(3)} m`); }

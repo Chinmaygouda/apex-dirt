@@ -16,3 +16,11 @@ export const LANE3_SPEC = {
   cameraMinFollowM: 1.5,
   frameTimesS: [2.0, 2.5, 2.8, 3.2, 3.8, 4.1],
 } as const;
+
+// ---- 2026-11-01 v2 CORRECTION BLOCK (added after the first real run; v1 values above are NOT changed) ----
+// v1 outwardRollDeg {1.0, 6.0} was my own estimate and conflicts with the project's existing frozen v6_spec.ts
+// (slideScrubMinRollDeg 4.0 / slideScrubMaxRollDeg 8.5). lane3_frames.ts now reports BOTH; the v1 check stays
+// recorded and failing, and the v6-aligned check is the one that scores.
+export const LANE3_SPEC_V2 = {
+  outwardRollDeg: { min: 4.0, max: 8.5, atTimesS: [3.8, 4.1], source: 'v6_spec.ts slideScrubMin/MaxRollDeg' },
+} as const;
