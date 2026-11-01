@@ -426,16 +426,30 @@ export class CustomRallyVehicle {
       }
     }
 
-    // 1. Steering with Speed-Scaling & Counter-Steer Assist
-    // At rally speeds (110-130 mph) full steer input must produce only a few degrees of
-    // actual slip before the handbrake bites.
-    // Retain full low/mid speed authority (36 mph reference) so Test C (60 mph power oversteer)
-    // passes with high yaw-rate differential, while tapering heavily above 85 mph down to ~0.18 at 115-130 mph.
+    // 1. Steering: Speed-sensitive lock limited by predicted lateral acceleration (active at ALL speeds)
+    // Kinematic Ackermann: delta_kin = (L * a_y_limit) / v^2.
+    // Dynamic tire slip / understeer compliance: slipSteerRad.
     const maxSteerRad = THREE.MathUtils.degToRad(this.tuning.maxSteerAngleDeg);
-    const baseScale = Math.min(1.0, 36.0 / Math.max(16.0, speedMph));
-    const highSpeedFactor = 1.0 - THREE.MathUtils.smoothstep(speedMph, 85.0, 125.0) * 0.50;
-    const speedScale = baseScale * highSpeedFactor;
-    let targetSteer = -inputs.steer * maxSteerRad * speedScale;
+    const forwardSpeedMs = Math.max(1.0, Math.abs(vForward));
+    const wheelBase = 2.70; // Axle separation: z = 1.35 to z = -1.35
+    const targetAyLimit = 1.15 * 9.80665; // ~1.15 G predicted lateral acceleration limit
+    const kinSteerRad = (wheelBase * targetAyLimit) / (forwardSpeedMs * forwardSpeedMs);
+    const slipSteerRad = 0.046;
+    const speedTaper = THREE.MathUtils.smoothstep(speedMph, 30.0, 60.0);
+    const cruiseLockRad = THREE.MathUtils.lerp(maxSteerRad, Math.min(maxSteerRad, kinSteerRad + slipSteerRad), speedTaper);
+
+    // Trail-braking / slide entry authority:
+    // When braking into a corner or in handbrake/drift, front lock authority expands to allow pitch into rotation
+    const brakeAuthority = THREE.MathUtils.smoothstep(inputs.brake, 0.15, 0.85);
+    const slideAuthority = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 8.0, 20.0);
+    const hbAuthority = inputs.handbrake ? 1.0 : 0.0;
+    const dynamicAuthority = Math.max(brakeAuthority, slideAuthority, hbAuthority);
+
+    // Dynamic lock interpolates smoothly from cruise lock to rally lock (~12 deg at 95 mph, ~8.5 deg at 120 mph)
+    const baseRallyLock = maxSteerRad * Math.min(1.0, 36.0 / Math.max(16.0, speedMph)) * (1.0 - THREE.MathUtils.smoothstep(speedMph, 85.0, 125.0) * 0.50);
+    const effectiveLockRad = THREE.MathUtils.lerp(cruiseLockRad, baseRallyLock, dynamicAuthority);
+
+    let targetSteer = -inputs.steer * effectiveLockRad;
 
     // Counter-steer assist / caster pneumatic trail: helps when driver is neutral / hands-off, but never fights a driver who is deliberately holding lock
     if (Math.abs(this.driftAngleDeg) > 3.0) {
@@ -500,8 +514,14 @@ export class CustomRallyVehicle {
     const isBrakingInput = effectiveBrakeDemand > 0.05 || inputs.handbrake;
     const isStationaryBraking = planarSpeedMs < 0.35 && effectiveDriveDemand < 0.05 && isBrakingInput;
 
-    // Smooth steering rack: tolerates inputs that snap to full lock in 3 frames
-    this.currentSteer += (targetSteer - this.currentSteer) * Math.min(1.0, 24.0 * dt);
+    // Direction-aware rack ramp: slow for digital input into lock at speed, faster return to center
+    const isSteeringIn = (Math.abs(targetSteer) >= Math.abs(this.currentSteer) - 0.001) &&
+                         (targetSteer * this.currentSteer >= -0.001);
+    const speedBlend = THREE.MathUtils.smoothstep(speedMph, 15.0, 85.0);
+    const steerInRate = THREE.MathUtils.lerp(24.0, 5.0, speedBlend);
+    const returnRate = THREE.MathUtils.lerp(24.0, 10.0, speedBlend);
+    const rackRate = isSteeringIn ? steerInRate : returnRate;
+    this.currentSteer += (targetSteer - this.currentSteer) * Math.min(1.0, rackRate * dt);
 
     // 2. Drivetrain Torque & Gearbox (V1)
     this.updateGearbox(dt, speedMs, effectiveDriveDemand, effectiveBrakeDemand, inputs);
@@ -680,9 +700,20 @@ export class CustomRallyVehicle {
 
       const Fmax = muLoad * Fz;
       let FmaxLat = Fmax;
-      if (isRear && isHandbrake) {
-        const driftStabilization = THREE.MathUtils.clamp((Math.abs(this.driftAngleDeg) - 18.0) / 16.0, 0, 1);
-        FmaxLat *= (1.0 + 0.95 * driftStabilization);
+      if (isRear) {
+        if (isHandbrake) {
+          const driftStabilization = THREE.MathUtils.clamp((Math.abs(this.driftAngleDeg) - 18.0) / 16.0, 0, 1);
+          FmaxLat *= (1.0 + 0.95 * driftStabilization);
+        } else {
+          const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
+          const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
+          FmaxLat *= (1.0 + 0.55 * speedUndersteer * (1.0 - slideBlend));
+        }
+      } else {
+        // Front lateral grip in steady cornering: slightly moderated to ensure positive understeer gradient (front saturates before rear)
+        const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
+        const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
+        FmaxLat *= (1.0 - 0.10 * speedUndersteer * (1.0 - slideBlend));
       }
 
       // Angular velocity update for wheel
@@ -706,20 +737,18 @@ export class CustomRallyVehicle {
 
       const isDirtOrGravel = surfaceInfo.name === 'Dirt' || surfaceInfo.name === 'Gravel';
 
-      // 2. Lateral Tyre Curve: Wide flat peak (10-14 degrees of slip, falloff 15-25% beyond it, not a cliff)
+      // 2. Lateral Tyre Curve: Higher rear cornering stiffness (peak at 7.5 deg) vs front (10.5 deg) for understeer gradient
       let FyRaw = 0;
       if (isDirtOrGravel) {
         const alphaDeg = Math.abs(alpha) * (180 / Math.PI);
+        const peakAlpha = isRear ? 7.5 : 10.5;
         let normGrip = 0;
-        if (alphaDeg <= 10.0) {
-          // Smooth rise to peak at 10 deg (quarter-sine wave with zero derivative at 10 deg)
-          normGrip = Math.sin((alphaDeg / 10.0) * (Math.PI / 2));
-        } else if (alphaDeg <= 14.0) {
-          // Wide flat peak between 10 and 14 deg
+        if (alphaDeg <= peakAlpha) {
+          normGrip = Math.sin((alphaDeg / peakAlpha) * (Math.PI / 2));
+        } else if (alphaDeg <= peakAlpha + 4.0) {
           normGrip = 1.0;
         } else {
-          // Smooth 15-25% falloff beyond 14 deg (settles to 80% plateau, not a cliff)
-          const v = (alphaDeg - 14.0) / 16.0;
+          const v = (alphaDeg - (peakAlpha + 4.0)) / 16.0;
           normGrip = 0.80 + 0.20 * Math.exp(-0.5 * v * v);
         }
         FyRaw = -Math.sign(alpha) * FmaxLat * normGrip;
@@ -1091,21 +1120,14 @@ export class CustomRallyVehicle {
       targetPitchDeg = this.smoothedLongitudinalG * this.tuning.visualDiveScale * exag;
     }
 
-    // Visual roll offset with deadzone:
-    // With steering within +/-0.25 on straights, the body must be within 1 degree of level.
-    // Drive visual roll and droop from smoothed lateral acceleration with a deadzone, not directly from small steering inputs.
-    const steerMag = Math.abs(inputs.steer);
-    const steerGating = THREE.MathUtils.smoothstep(steerMag, 0.22, 0.35); // 0 within +/-0.22, full above 0.35
-    const latGDeadzone = 0.25; // Lateral acceleration deadzone
-    const absLatG = Math.abs(this.smoothedLateralG);
-    const excessLatG = Math.max(0, absLatG - latGDeadzone);
-    const effectiveLatG = Math.sign(this.smoothedLateralG) * excessLatG * steerGating;
+    // Visual roll: derived purely from smoothed lateral G (no steering-key gating).
+    // Turning right (smoothedLateralG > 0) rolls the car outward/left (-Z rotation).
+    const targetRollDeg = -this.smoothedLateralG * this.tuning.visualRollScale * exag;
 
-    // Turning right (effectiveLatG > 0) rolls the car outward/left (-Z rotation)
-    const targetRollDeg = -effectiveLatG * this.tuning.visualRollScale * exag;
-
-    this.currentVisualPitch += (targetPitchDeg - this.currentVisualPitch) * Math.min(1.0, 18.0 * frameDt);
-    this.currentVisualRoll += (targetRollDeg - this.currentVisualRoll) * Math.min(1.0, 18.0 * frameDt);
+    // Rate-limit visual roll change: no per-frame change above 1 deg at 30 fps (<= 30.0 deg/s)
+    const maxDeltaRollDeg = 30.0 * frameDt;
+    const deltaRollDeg = THREE.MathUtils.clamp(targetRollDeg - this.currentVisualRoll, -maxDeltaRollDeg, maxDeltaRollDeg);
+    this.currentVisualRoll += deltaRollDeg;
 
     const bodyOffsetQuat = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(
@@ -1119,23 +1141,8 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Per-wheel normal forces and axle load totals for load-driven droop
-    const fzFL = this.wheelNormalForces[0] || 0;
-    const fzFR = this.wheelNormalForces[1] || 0;
-    const fzRL = this.wheelNormalForces[2] || 0;
-    const fzRR = this.wheelNormalForces[3] || 0;
-    const frontTotalFz = fzFL + fzFR;
-    const rearTotalFz = fzRL + fzRR;
-    const totalFz = Math.max(1000, frontTotalFz + rearTotalFz);
-
-    // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
-    const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
-
-    // Droop gating: only activate during handbrake application OR established slide (>= 6 deg).
-    // Do NOT gate on steer input alone - that caused premature droop at 2.1 s on straights.
-    const handbrakeActive = inputs.handbrake ? 1.0 : 0.0;
-    const slideActive = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 6.0, 15.0);
-    const motionGating = Math.max(handbrakeActive, slideActive);
+    // Static normal load per rear wheel (~1,180 kg * 9.80665 / 4 = ~2,893 N)
+    const staticRearFz = 2893;
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1145,36 +1152,15 @@ export class CustomRallyVehicle {
       const localAnchor = this.wheelAnchors[i];
       const suspLen = this.currentSuspensionLengths[i];
 
-      // Wheel droop in rotation:
-      // Driven directly from per-wheel normal load unloading (peaks 8-15 cm during handbrake rotation, load-driven in sustained slide).
-      // With steering within +/-0.25 on straights (and slip < 6°), droop is strictly 0.
+      // Symmetric rear wheel droop driven purely by per-wheel load reduction (no state gating)
       let visualDroop = 0;
       const isRearWheel = i >= 2;
-      if (isRearWheel && motionGating > 0) {
-        const partnerIdx = i === 2 ? 3 : 2;
+      if (isRearWheel) {
         const fzSelf = this.wheelNormalForces[i] || 0;
-        const fzPartner = this.wheelNormalForces[partnerIdx] || 0;
-
-        // Inside rear wheel has less normal force than outside partner
-        if (fzPartner > fzSelf) {
-          const latUnload = (fzPartner - fzSelf) / Math.max(1000, fzPartner);
-          // Handbrake rotation impulse: drives 12-14 cm peak droop during handbrake rotation
-          const hbUnload = inputs.handbrake ? 0.58 : 0.0;
-
-          // Purely load-driven droop ratio:
-          // During handbrake rotation (t=2.7-3.4s), peaks at ~12-13 cm;
-          // When handbrake releases, relaxes to a few cm (2-3 cm) by 3.6s and stays calm.
-          const targetDroopRatio = THREE.MathUtils.clamp(
-            latUnload * 0.18 + pitchUnload * 0.40 + hbUnload,
-            0,
-            1.0
-          ) * motionGating;
-
-          const targetDroop = targetDroopRatio * this.tuning.visualDroopExtension * exag;
-          // Smooth transient response
-          const currentDroop = this.lastVisualDroop[i] || 0;
-          visualDroop = currentDroop + (targetDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
-        }
+        const unloadRatio = THREE.MathUtils.clamp((staticRearFz - fzSelf) / staticRearFz, 0, 1.0);
+        const targetDroop = unloadRatio * this.tuning.visualDroopExtension;
+        const currentDroop = this.lastVisualDroop[i] || 0;
+        visualDroop = currentDroop + (targetDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       }
       this.lastVisualDroop[i] = visualDroop;
       const effectiveSuspLen = suspLen + visualDroop;

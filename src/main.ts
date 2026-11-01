@@ -150,10 +150,11 @@ async function initGame() {
   const replayVisualizer = new ReplayVisualizer(scene, physics, vehicle, camera, renderer, sunLight);
   (window as any).runVisualReplay = () => replayVisualizer.runAndCaptureScreenshots();
 
-  // Deterministic 4-Clip Video Recorder
+  // Deterministic Video Recorder
   const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
   const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight);
   (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
+  (window as any).renderKeyboardVideo = () => videoRecorder.renderClipKeyboardFeel();
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -178,6 +179,16 @@ async function initGame() {
       (window as any).__videoRenderFinished = true;
       (window as any).__videoResults = results;
       console.log('All video clips rendered & finished successfully:', results);
+    }, 600);
+  }
+
+  if (window.location.search.includes('render_keyboard=true')) {
+    setTimeout(async () => {
+      console.log('Automated Keyboard Video Render Triggered via query param');
+      const result = await videoRecorder.renderClipKeyboardFeel();
+      (window as any).__videoRenderFinished = true;
+      (window as any).__videoResults = [result];
+      console.log('Keyboard video clip rendered & finished successfully:', result);
     }, 600);
   }
 
