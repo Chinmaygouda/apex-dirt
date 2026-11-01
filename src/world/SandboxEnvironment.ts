@@ -18,10 +18,12 @@ export class SandboxEnvironment {
   }
 
   private createGround(): void {
-    // Visual ground plane (1200m x 1200m)
-    const size = 1200;
-    const geometry = new THREE.PlaneGeometry(size, size, 120, 120);
+    // Visual staging & skidpad test pad (200m x 220m centered at staging grounds)
+    const sizeX = 220;
+    const sizeZ = 240;
+    const geometry = new THREE.PlaneGeometry(sizeX, sizeZ, 32, 32);
     geometry.rotateX(-Math.PI / 2);
+    geometry.translate(25, 0, 40);
 
     // Apply vertex colors for low-poly subtle variation
     const count = geometry.attributes.position.count;
@@ -48,18 +50,19 @@ export class SandboxEnvironment {
 
     const groundMesh = new THREE.Mesh(geometry, material);
     groundMesh.receiveShadow = true;
+    groundMesh.position.y = -0.02;
     this.group.add(groundMesh);
 
     // Grid helper overlay on test pad for visual speed reference
-    const gridHelper = new THREE.GridHelper(500, 250, 0x555048, 0x3d3832);
-    gridHelper.position.y = 0.02;
+    const gridHelper = new THREE.GridHelper(160, 40, 0x555048, 0x3d3832);
+    gridHelper.position.set(45, 0.01, 10);
     this.group.add(gridHelper);
 
-    // Physics ground collider (fixed half-space or large box)
+    // Physics ground collider for test staging area
     const rapier = this.physics.rapier;
-    const groundBodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0);
+    const groundBodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(25, -0.5, 40);
     const groundBody = this.physics.world.createRigidBody(groundBodyDesc);
-    const groundColliderDesc = rapier.ColliderDesc.cuboid(size / 2, 0.5, size / 2)
+    const groundColliderDesc = rapier.ColliderDesc.cuboid(sizeX / 2, 0.5, sizeZ / 2)
       .setFriction(0.9)
       .setRestitution(0.0);
     this.groundCollider = this.physics.world.createCollider(groundColliderDesc, groundBody);
@@ -106,10 +109,10 @@ export class SandboxEnvironment {
   }
 
   private createSlalomCourse(): void {
-    // Line of cones along Z-axis for testing steering response and weight transfer
+    // Slalom course positioned in testing area (offset to X=35, clear of rally road)
     const spacing = 18;
     for (let i = 1; i <= 6; i++) {
-      this.createCone(0, i * spacing);
+      this.createCone(35, i * spacing);
     }
   }
 
@@ -226,7 +229,6 @@ export class SandboxEnvironment {
       [-70, -30], [-80, 0], [-75, 40], [-85, 70], [-70, 100],
       [70, -30], [80, 10], [85, 50], [75, 90], [80, 130],
       [-40, -60], [0, -70], [40, -60],
-      [-50, 140], [0, 150], [50, 140],
     ];
 
     for (let i = 0; i < treePositions.length; i++) {

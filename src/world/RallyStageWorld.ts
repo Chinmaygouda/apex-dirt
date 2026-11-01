@@ -72,6 +72,7 @@ export class RallyStageWorld {
     this.precomputeRoadSamples();
 
     this.createTerrainAndRoad();
+    this.createSideGuardrails();
     this.createInstancedForest();
     this.createRoadsideProps();
     this.createClouds();
@@ -158,6 +159,60 @@ export class RallyStageWorld {
         width: this.roadHalfWidth * 2,
         distance: u * this.totalLength,
       });
+    }
+  }
+
+  /**
+   * Computes seamless alpine terrain elevation at (x, z), naturally anchored to the road height.
+   */
+  public getTerrainElevation(x: number, z: number): number {
+    let minDistSq = Infinity;
+    let nearestY = 0;
+
+    const step = 6;
+    let bestIdx = 0;
+    const len = this.samples.length;
+    for (let i = 0; i < len; i += step) {
+      const p = this.samples[i].point;
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < minDistSq) {
+        minDistSq = dSq;
+        bestIdx = i;
+      }
+    }
+
+    const start = Math.max(0, bestIdx - step);
+    const end = Math.min(len - 1, bestIdx + step);
+    for (let i = start; i <= end; i++) {
+      const p = this.samples[i].point;
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const dSq = dx * dx + dz * dz;
+      if (dSq < minDistSq) {
+        minDistSq = dSq;
+        nearestY = p.y;
+      }
+    }
+
+    const dist = Math.sqrt(minDistSq);
+
+    // Natural undulating alpine hills
+    const wave = Math.sin(x * 0.007) * Math.cos(z * 0.007) * 7.0 +
+                 Math.sin(x * 0.018) * Math.sin(z * 0.014) * 3.0;
+    const baseHills = Math.max(-1.5, wave);
+
+    // If within road verge: flush under road
+    if (dist <= 8.5) {
+      return nearestY - 0.20;
+    } else if (dist < 55.0) {
+      // Smooth natural shoulder slope connecting road to hills
+      const t = (dist - 8.5) / (55.0 - 8.5);
+      const smooth = t * t * (3 - 2 * t);
+      return THREE.MathUtils.lerp(nearestY - 0.20, baseHills, smooth);
+    } else {
+      return baseHills;
     }
   }
 
@@ -254,19 +309,15 @@ export class RallyStageWorld {
     roadMesh.castShadow = false;
     this.group.add(roadMesh);
 
-    // Large surrounding terrain bed
-    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 64, 64);
+    // Large surrounding terrain bed (1600m x 1600m) smoothly embedded to road elevation
+    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 80, 80);
     terrainGeom.rotateX(-Math.PI / 2);
     const tPos = terrainGeom.attributes.position;
     for (let k = 0; k < tPos.count; k++) {
       const px = tPos.getX(k);
       const pz = tPos.getZ(k);
-      // Gentle undulating mountain hills around valley
-      const dist = Math.hypot(px, pz);
-      const wave = Math.sin(px * 0.008) * Math.cos(pz * 0.008) * 12.0 +
-                   Math.sin(px * 0.02) * Math.sin(pz * 0.015) * 4.0;
-      const elevation = Math.max(-2.0, wave + (dist > 350 ? (dist - 350) * 0.06 : 0));
-      tPos.setY(k, elevation - 0.25);
+      const elevation = this.getTerrainElevation(px, pz);
+      tPos.setY(k, elevation);
     }
     terrainGeom.computeVertexNormals();
 
@@ -278,7 +329,6 @@ export class RallyStageWorld {
     });
     const terrainMesh = new THREE.Mesh(terrainGeom, terrainMat);
     terrainMesh.receiveShadow = true;
-    terrainMesh.position.y = -0.15;
     this.group.add(terrainMesh);
 
     // Build Rapier physics colliders: 1:1 exact trimesh for road ribbon and surrounding terrain
@@ -294,7 +344,7 @@ export class RallyStageWorld {
 
     // Surrounding terrain bed collision: full 1600m x 1600m continuous collision prevents falling through map off-road
     const terrainBody = this.physics.world.createRigidBody(
-      rapier.RigidBodyDesc.fixed().setTranslation(0, -0.15, 0)
+      rapier.RigidBodyDesc.fixed()
     );
     const terrainVertices = new Float32Array(terrainGeom.attributes.position.array);
     const terrainIndices = new Uint32Array(terrainGeom.index!.array);
@@ -304,6 +354,118 @@ export class RallyStageWorld {
     ).setFriction(0.7).setRestitution(0.0);
     const terrainCollider = this.physics.world.createCollider(terrainColDesc, terrainBody);
     this.physicsColliders.push(terrainCollider);
+  }
+
+  /**
+   * Continuous Rally-Spec Double Armco Guardrails along road boundaries with high-visibility hazard stripes
+   */
+  private createSideGuardrails(): void {
+    const railVertices: number[] = [];
+    const railColors: number[] = [];
+    const railIndices: number[] = [];
+
+    const postGroup = new THREE.Group();
+    const postGeom = new THREE.BoxGeometry(0.12, 1.1, 0.12);
+    const postMat = new THREE.MeshStandardMaterial({
+      color: 0x3d352e,
+      roughness: 0.85,
+      flatShading: true
+    });
+
+    const sides = [-4.5, 4.5]; // Left and Right offsets from centerline (road half-width is 3.8m)
+    const startSkipSamples = Math.floor(this.numSamples * 0.015); // Opening at start line
+
+    sides.forEach((sideOffset) => {
+      let vertOffset = railVertices.length / 3;
+      let prevValidIdx = -1;
+
+      for (let i = 0; i < this.numSamples; i++) {
+        // Skip open start/paddock gate so car has free entry/exit at start
+        if (i < startSkipSamples || i > this.numSamples - startSkipSamples) {
+          prevValidIdx = -1;
+          continue;
+        }
+
+        const sample = this.samples[i];
+        const pt = sample.point;
+        const binormal = sample.binormal;
+        const normal = sample.normal;
+
+        const base = pt.clone().add(binormal.clone().multiplyScalar(sideOffset));
+        const topY = base.clone().add(normal.clone().multiplyScalar(0.82));
+        const botY = base.clone().add(normal.clone().multiplyScalar(0.38));
+
+        // Add 2 vertices for rail ribbon
+        railVertices.push(topY.x, topY.y, topY.z);
+        railVertices.push(botY.x, botY.y, botY.z);
+
+        // Color: alternating red & white on curves / chevrons, galvanized silver on straights
+        const isSharpTurn = Math.abs(sample.bankingRad) > 0.035;
+        const isStripeRed = Math.floor(i / 2) % 2 === 0;
+
+        let r = 0.75, g = 0.78, b = 0.80; // Galvanized silver
+        if (isSharpTurn) {
+          if (isStripeRed) {
+            r = 0.88; g = 0.08; b = 0.12; // Rally red
+          } else {
+            r = 0.98; g = 0.98; b = 0.98; // High-vis white
+          }
+        }
+
+        railColors.push(r, g, b);
+        railColors.push(r, g, b);
+
+        const curVert = vertOffset;
+        vertOffset += 2;
+
+        if (prevValidIdx !== -1) {
+          // Connect previous 2 vertices to current 2 vertices (2 triangles each direction for double-sided collision)
+          railIndices.push(prevValidIdx, curVert, prevValidIdx + 1);
+          railIndices.push(prevValidIdx + 1, curVert, curVert + 1);
+          railIndices.push(prevValidIdx, prevValidIdx + 1, curVert);
+          railIndices.push(prevValidIdx + 1, curVert + 1, curVert);
+        }
+        prevValidIdx = curVert;
+
+        // Add post every 2 samples (~5.3m)
+        if (i % 2 === 0) {
+          const post = new THREE.Mesh(postGeom, postMat);
+          post.position.set(base.x, base.y + 0.45, base.z);
+          post.castShadow = true;
+          postGroup.add(post);
+        }
+      }
+    });
+
+    const railGeom = new THREE.BufferGeometry();
+    railGeom.setAttribute('position', new THREE.Float32BufferAttribute(railVertices, 3));
+    railGeom.setAttribute('color', new THREE.Float32BufferAttribute(railColors, 3));
+    railGeom.setIndex(railIndices);
+    railGeom.computeVertexNormals();
+
+    const railMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      metalness: 0.75,
+      roughness: 0.25,
+      flatShading: true,
+      side: THREE.DoubleSide
+    });
+
+    const railMesh = new THREE.Mesh(railGeom, railMat);
+    railMesh.castShadow = true;
+    railMesh.receiveShadow = true;
+    this.group.add(railMesh);
+    this.group.add(postGroup);
+
+    // Physics collider for guardrails: static trimesh deflection barrier
+    const rapier = this.physics.rapier;
+    const railBody = this.physics.world.createRigidBody(rapier.RigidBodyDesc.fixed());
+    const railColDesc = rapier.ColliderDesc.trimesh(
+      new Float32Array(railVertices),
+      new Uint32Array(railIndices)
+    ).setFriction(0.2).setRestitution(0.15);
+    const railCollider = this.physics.world.createCollider(railColDesc, railBody);
+    this.physicsColliders.push(railCollider);
   }
 
   /**
@@ -386,10 +548,10 @@ export class RallyStageWorld {
       const distFromRoad = 8.5 + (t % 11) * 3.5 + Math.random() * 25.0;
       const x = pt.x + binormal.x * (side * distFromRoad);
       const z = pt.z + binormal.z * (side * distFromRoad);
-      const y = pt.y - 0.2; // Anchored in terrain
+      const y = this.getTerrainElevation(x, z);
 
       const scale = 0.8 + (t % 5) * 0.12 + Math.random() * 0.2;
-      dummy.position.set(x, y, z);
+      dummy.position.set(x, y - 0.2, z);
       dummy.scale.set(scale, scale, scale);
       dummy.rotation.y = t * 0.67;
       dummy.updateMatrix();
