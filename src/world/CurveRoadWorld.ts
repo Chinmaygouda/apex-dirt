@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import type { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CourseGeometry } from './CourseGeometry';
 import { WORLD_CONFIG } from './worldConfig';
@@ -177,8 +178,302 @@ export class CurveRoadWorld {
     this.physicsColliders.push(endCol);
   }
 
-  public async buildVisuals(scene: any): Promise<void> {
-    // Visual implementation in commit 3
+  public async buildVisuals(scene: THREE.Scene): Promise<void> {
+    const transX = WORLD_CONFIG.rigidTransform.transX;
+    const transZ = WORLD_CONFIG.rigidTransform.transZ;
+
+    // 1. Flat Ground: One large muted green-brown plane (4000x4000m)
+    // Edge is never visible from anywhere on the road (fog density 0.0018)
+    const groundGeo = new THREE.PlaneGeometry(4000, 4000, 1, 1);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x556a47, // Muted green-brown low-poly look
+      roughness: 0.95,
+      metalness: 0.05,
+      flatShading: true,
+    });
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.position.set(350 + transX, 0, 400 + transZ);
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+
+    // 2. Road Ribbon: 8m wide analytic centreline ribbon
+    // Sampled every 2m on straights/gentle arcs, every 1m on the hairpin (s in [869.9, 922.3])
+    // Elevated by 0.02m with polygonOffset to avoid z-fighting. Darker edge strips on both sides.
+    const roadPoints: Array<{ s: number; x: number; z: number; heading: number }> = [];
+    let sPos = 0;
+    while (sPos < CourseGeometry.totalLength) {
+      const pt = CourseGeometry.sample(sPos);
+      roadPoints.push({ s: sPos, x: pt.x, z: pt.z, heading: pt.heading });
+      const step = (sPos >= 869.9 && sPos <= 922.3) ? 1.0 : 2.0;
+      sPos = Math.min(CourseGeometry.totalLength, sPos + step);
+      if (sPos === CourseGeometry.totalLength) {
+        const endPt = CourseGeometry.sample(sPos);
+        roadPoints.push({ s: sPos, x: endPt.x, z: endPt.z, heading: endPt.heading });
+        break;
+      }
+    }
+
+    const roadElevation = 0.02;
+    const roadHalfW = WORLD_CONFIG.roadHalfWidth; // 4.0m
+    const edgeStripW = 0.40; // 40cm darker edge strip
+    const innerW = roadHalfW - edgeStripW; // 3.6m
+
+    // Vertices per slice:
+    // 0: left outer (-4.0m)
+    // 1: left inner strip (-3.6m)
+    // 2: right inner strip (+3.6m)
+    // 3: right outer (+4.0m)
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const mainIndices: number[] = [];
+    const edgeIndices: number[] = [];
+
+    for (let i = 0; i < roadPoints.length; i++) {
+      const rp = roadPoints[i];
+      const cosH = Math.cos(rp.heading);
+      const sinH = Math.sin(rp.heading);
+      const wx = rp.x + transX;
+      const wz = rp.z + transZ;
+
+      // Normal to heading: (cosH, -sinH) is right normal, (-cosH, sinH) is left normal
+      const nxR = cosH;
+      const nzR = -sinH;
+
+      const v0x = wx - roadHalfW * nxR;
+      const v0z = wz - roadHalfW * nzR;
+
+      const v1x = wx - innerW * nxR;
+      const v1z = wz - innerW * nzR;
+
+      const v2x = wx + innerW * nxR;
+      const v2z = wz + innerW * nzR;
+
+      const v3x = wx + roadHalfW * nxR;
+      const v3z = wz + roadHalfW * nzR;
+
+      positions.push(
+        v0x, roadElevation, v0z,
+        v1x, roadElevation, v1z,
+        v2x, roadElevation, v2z,
+        v3x, roadElevation, v3z
+      );
+
+      normals.push(
+        0, 1, 0,
+        0, 1, 0,
+        0, 1, 0,
+        0, 1, 0
+      );
+
+      if (i > 0) {
+        const curr = i * 4;
+        const prev = (i - 1) * 4;
+
+        // Left edge strip (v0..v1)
+        edgeIndices.push(
+          prev + 0, curr + 0, curr + 1,
+          prev + 0, curr + 1, prev + 1
+        );
+
+        // Center main road (v1..v2)
+        mainIndices.push(
+          prev + 1, curr + 1, curr + 2,
+          prev + 1, curr + 2, prev + 2
+        );
+
+        // Right edge strip (v2..v3)
+        edgeIndices.push(
+          prev + 2, curr + 2, curr + 3,
+          prev + 2, curr + 3, prev + 3
+        );
+      }
+    }
+
+    const roadGeo = new THREE.BufferGeometry();
+    roadGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    roadGeo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+
+    // Combine indices and assign material groups
+    const combinedIndices = [...mainIndices, ...edgeIndices];
+    roadGeo.setIndex(combinedIndices);
+    roadGeo.addGroup(0, mainIndices.length, 0);
+    roadGeo.addGroup(mainIndices.length, edgeIndices.length, 1);
+
+    const roadMatMain = new THREE.MeshStandardMaterial({
+      color: 0x766d64, // Dirt / packed gravel
+      roughness: 0.90,
+      metalness: 0.05,
+      flatShading: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.0,
+      polygonOffsetUnits: -1.0,
+    });
+    const roadMatEdge = new THREE.MeshStandardMaterial({
+      color: 0x4d4742, // Slightly darker edge strips
+      roughness: 0.90,
+      metalness: 0.05,
+      flatShading: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -1.0,
+      polygonOffsetUnits: -1.0,
+    });
+
+    const roadMesh = new THREE.Mesh(roadGeo, [roadMatMain, roadMatEdge]);
+    roadMesh.receiveShadow = true;
+    scene.add(roadMesh);
+
+    // 3. Fences on BOTH sides along the whole road
+    // Visual line at 6.0m from centreline, ~1.0m tall, two rails (heights 0.45 and 0.90),
+    // and posts every 4m measured along arc length. InstancedMesh (one for posts, one for rails).
+    const visualFenceDist = WORLD_CONFIG.fenceLine; // 6.0m
+    const postSpacing = WORLD_CONFIG.postSpacing;   // 4.0m
+    const fenceMat = new THREE.MeshStandardMaterial({
+      color: 0xd8d8d4, // Muted silver/white
+      roughness: 0.75,
+      metalness: 0.15,
+      flatShading: true,
+    });
+
+    // Sample fence post positions on both left and right sides
+    const leftPosts: THREE.Vector3[] = [];
+    const rightPosts: THREE.Vector3[] = [];
+
+    for (let s = 0; s <= CourseGeometry.totalLength; s += postSpacing) {
+      const pt = CourseGeometry.sample(s);
+      const cosH = Math.cos(pt.heading);
+      const sinH = Math.sin(pt.heading);
+      const wx = pt.x + transX;
+      const wz = pt.z + transZ;
+
+      // Right fence post (at +6.0m from centreline)
+      rightPosts.push(new THREE.Vector3(wx + visualFenceDist * cosH, 0.50, wz - visualFenceDist * sinH));
+
+      // Left fence post (at -6.0m from centreline)
+      leftPosts.push(new THREE.Vector3(wx - visualFenceDist * cosH, 0.50, wz + visualFenceDist * sinH));
+    }
+
+    const totalPosts = leftPosts.length + rightPosts.length;
+    const postGeo = new THREE.BoxGeometry(0.12, 1.0, 0.12);
+    const postInstancedMesh = new THREE.InstancedMesh(postGeo, fenceMat, totalPosts);
+    postInstancedMesh.castShadow = true;
+    postInstancedMesh.receiveShadow = true;
+
+    const dummyObj = new THREE.Object3D();
+    let postIdx = 0;
+
+    for (const p of rightPosts) {
+      dummyObj.position.copy(p);
+      dummyObj.rotation.set(0, 0, 0);
+      dummyObj.scale.set(1, 1, 1);
+      dummyObj.updateMatrix();
+      postInstancedMesh.setMatrixAt(postIdx++, dummyObj.matrix);
+    }
+    for (const p of leftPosts) {
+      dummyObj.position.copy(p);
+      dummyObj.rotation.set(0, 0, 0);
+      dummyObj.scale.set(1, 1, 1);
+      dummyObj.updateMatrix();
+      postInstancedMesh.setMatrixAt(postIdx++, dummyObj.matrix);
+    }
+    postInstancedMesh.instanceMatrix.needsUpdate = true;
+    scene.add(postInstancedMesh);
+
+    // Rails: Two rails per span (heights y=0.45 and y=0.90)
+    const spanCount = (leftPosts.length - 1) + (rightPosts.length - 1);
+    const totalRails = spanCount * 2;
+    // Base rail geometry unit length along Z
+    const railGeo = new THREE.BoxGeometry(0.06, 0.10, 1.0);
+    const railInstancedMesh = new THREE.InstancedMesh(railGeo, fenceMat, totalRails);
+    railInstancedMesh.castShadow = true;
+    railInstancedMesh.receiveShadow = true;
+
+    let railIdx = 0;
+    const railHeights = [0.45, 0.90];
+
+    const addRailsForFence = (posts: THREE.Vector3[]) => {
+      for (let i = 0; i < posts.length - 1; i++) {
+        const pA = posts[i];
+        const pB = posts[i + 1];
+        const dx = pB.x - pA.x;
+        const dz = pB.z - pA.z;
+        const spanDist = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const midX = (pA.x + pB.x) * 0.5;
+        const midZ = (pA.z + pB.z) * 0.5;
+
+        for (const ry of railHeights) {
+          dummyObj.position.set(midX, ry, midZ);
+          dummyObj.rotation.set(0, yaw, 0);
+          dummyObj.scale.set(1, 1, spanDist);
+          dummyObj.updateMatrix();
+          railInstancedMesh.setMatrixAt(railIdx++, dummyObj.matrix);
+        }
+      }
+    };
+
+    addRailsForFence(rightPosts);
+    addRailsForFence(leftPosts);
+    railInstancedMesh.instanceMatrix.needsUpdate = true;
+    scene.add(railInstancedMesh);
+
+    // 4. End Barriers: Solid striped low barrier block across the road at BOTH ends
+    // Start end at s = -2, far end at s = 1470, perpendicular to local heading.
+    const createStripedBarrier = (sLoc: number) => {
+      const pt = CourseGeometry.sample(sLoc);
+      const wx = pt.x + transX;
+      const wz = pt.z + transZ;
+      const heading = pt.heading;
+
+      // 16m wide across corridor, 0.8m high, 1.0m thick
+      const bWidth = 16.0;
+      const bHeight = 0.80;
+      const bThick = 1.0;
+
+      const barrierGeo = new THREE.BoxGeometry(bWidth, bHeight, bThick);
+
+      // Create procedural red/white hazard stripe canvas texture
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d')!;
+
+      ctx.fillStyle = '#dc2626'; // Vivid hazard red
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.fillStyle = '#ffffff'; // White stripes
+      const stripeW = 32;
+      for (let x = -128; x < 512 + 128; x += stripeW * 2) {
+        ctx.beginPath();
+        ctx.moveTo(x, 128);
+        ctx.lineTo(x + 64, 0);
+        ctx.lineTo(x + 64 + stripeW, 0);
+        ctx.lineTo(x + stripeW, 128);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      const stripeTexture = new THREE.CanvasTexture(canvas);
+      stripeTexture.wrapS = THREE.RepeatWrapping;
+      stripeTexture.wrapT = THREE.ClampToEdgeWrapping;
+      stripeTexture.repeat.set(4, 1);
+
+      const barrierMat = new THREE.MeshStandardMaterial({
+        map: stripeTexture,
+        roughness: 0.70,
+        metalness: 0.10,
+        flatShading: true,
+      });
+
+      const barrierMesh = new THREE.Mesh(barrierGeo, barrierMat);
+      barrierMesh.position.set(wx, bHeight * 0.5, wz);
+      barrierMesh.rotation.y = heading;
+      barrierMesh.castShadow = true;
+      barrierMesh.receiveShadow = true;
+      scene.add(barrierMesh);
+    };
+
+    createStripedBarrier(WORLD_CONFIG.endBarrierStartS);
+    createStripedBarrier(WORLD_CONFIG.endBarrierEndS);
   }
 
   public getSurfaceAt(worldX: number, worldZ: number): { name: string; multiplier: number } {

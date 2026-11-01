@@ -83,7 +83,7 @@ function buildSections(): { sections: SectionMetadata[]; totalLength: number } {
       x0,
       z0,
       h0,
-      radius: def.radius,
+      radius: 'radius' in def ? (def as { radius: number }).radius : undefined,
       cx,
       cz,
       hEnd: h,

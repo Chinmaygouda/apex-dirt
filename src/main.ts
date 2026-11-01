@@ -8,8 +8,16 @@ import { TelemetryHUD } from './ui/TelemetryHUD';
 import { VehicleDebugOverlay } from './ui/VehicleDebugOverlay';
 import { TuningPanel } from './ui/TuningPanel';
 import { THREE_PALETTE } from './core/Constants';
-import { RallyStageWorld, STAGE_PALETTE } from './world/RallyStageWorld';
+import { CurveRoadWorld } from './world/CurveRoadWorld';
+import { WORLD_CONFIG } from './world/worldConfig';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
+
+// Environment lighting & atmospheric haze colors
+const SKY_HORIZON = '#8FAEC9';
+const FOG_HAZE = '#8FAEC9';
+const SKY_ZENITH = '#4B6278';
+const ROAD_DIRT_SHADOW = '#4D4742';
+const SUN_WARMTH = '#FFF8E7';
 
 async function initGame() {
   // 1. Renderer Setup
@@ -28,14 +36,14 @@ async function initGame() {
 
   // 2. Scene Setup: Soft Blue Horizon Haze & Cascaded Atmosphere
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(STAGE_PALETTE.SKY_HORIZON);
-  scene.fog = new THREE.FogExp2(new THREE.Color(STAGE_PALETTE.FOG_HAZE), 0.0018);
+  scene.background = new THREE.Color(SKY_HORIZON);
+  scene.fog = new THREE.FogExp2(new THREE.Color(FOG_HAZE), 0.0018);
 
   // 3. Lighting: Low-Angle Directional Sun for dramatic tree shadows across road
-  const hemiLight = new THREE.HemisphereLight(new THREE.Color(STAGE_PALETTE.SKY_ZENITH), new THREE.Color(STAGE_PALETTE.ROAD_DIRT_SHADOW), 0.85);
+  const hemiLight = new THREE.HemisphereLight(new THREE.Color(SKY_ZENITH), new THREE.Color(ROAD_DIRT_SHADOW), 0.85);
   scene.add(hemiLight);
 
-  const sunLight = new THREE.DirectionalLight(new THREE.Color(STAGE_PALETTE.SUN_WARMTH), 2.2);
+  const sunLight = new THREE.DirectionalLight(new THREE.Color(SUN_WARMTH), 2.2);
   sunLight.position.set(65, 40, -50);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.width = 2048;
@@ -59,21 +67,25 @@ async function initGame() {
   const physics = new PhysicsWorld();
   await physics.init();
 
-  // 6. World Sandbox Environment & 1.6+ km Spline Rally Stage
-  const sandbox = new SandboxEnvironment(scene, physics);
-  const rallyWorld = new RallyStageWorld(scene, physics);
+  // 6. Minimal Frozen Curve Road World
+  const curveRoadWorld = new CurveRoadWorld();
+  curveRoadWorld.buildPhysics(physics);
+  await curveRoadWorld.buildVisuals(scene);
 
   // 7. Custom Tyre Model Vehicle
   const vehicle = new CustomRallyVehicle(scene, physics);
-  vehicle.worldSurfaceQuery = (x, z) => rallyWorld.getSurfaceAt(x, z);
+  vehicle.worldSurfaceQuery = (x, z) => curveRoadWorld.getSurfaceAt(x, z);
 
   // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
   const { VehicleEffects } = await import('./effects/VehicleEffects');
   const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
 
-  // 7c. Stage Manager & 20 Checkpoint Gates (Phase 4)
-  const { StageManager } = await import('./gameplay/StageManager');
-  const stageManager = new StageManager(scene, rallyWorld, vehicle);
+  // 7c. Stage Manager & Checkpoint Gates (Disabled under WORLD_CONFIG.gatesEnabled=false)
+  let stageManager: any = undefined;
+  if (WORLD_CONFIG.gatesEnabled) {
+    const { StageManager } = await import('./gameplay/StageManager');
+    stageManager = new StageManager(scene, curveRoadWorld as any, vehicle);
+  }
 
   // 7d. Procedural Rally Audio Engine (Phase 5)
   const { RallyAudioEngine } = await import('./audio/RallyAudioEngine');
@@ -330,10 +342,12 @@ async function initGame() {
       sunLight.target.position.copy(carPos);
     }
 
-    if (inputs.reset) {
-      stageManager.restart();
+    if (stageManager) {
+      if (inputs.reset) {
+        stageManager.restart();
+      }
+      stageManager.update(frameDt);
     }
-    stageManager.update(frameDt);
 
     // Update Telemetry HUD & Debug Overlay
     const telemetry = vehicle.getTelemetry(inputs);
