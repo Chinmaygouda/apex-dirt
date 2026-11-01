@@ -395,6 +395,24 @@ export class DeterministicVideoRecorder {
           body: JSON.stringify({ clipId, frameIndex: globalFrame, dataUrl })
         });
 
+        const keyFrames: Record<number, string> = {
+          30: 'screenshot_01_60mph_tap_peak.png',
+          60: 'screenshot_02_60mph_recovered.png',
+          120: 'screenshot_03_80mph_tap_peak.png',
+          150: 'screenshot_04_80mph_recovered.png',
+          210: 'screenshot_05_100mph_tap_peak.png',
+          240: 'screenshot_06_100mph_recovered.png',
+          300: 'screenshot_07_sturn_left_flick.png',
+          345: 'screenshot_08_sturn_right_flick.png',
+        };
+        if (keyFrames[globalFrame]) {
+          await fetch('/api/save-screenshot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: keyFrames[globalFrame], dataUrl })
+          });
+        }
+
         if (globalFrame % 30 === 0) {
           console.log(`[Keyboard Feel] Frame ${globalFrame}/${390} (t=${globalTime.toFixed(2)}s) rendered.`);
         }
