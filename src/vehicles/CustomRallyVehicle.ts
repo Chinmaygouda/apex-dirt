@@ -172,7 +172,7 @@ export class CustomRallyVehicle {
     driftExitAngleDeg: 5.0,
 
     enableSlideScrub: true,
-    slideScrubMuMax: 0.50,
+    slideScrubMuMax: 0.38,
     slideScrubMinSlipDeg: 9.0,
     slideScrubMaxSlipDeg: 35.0,
 
@@ -181,7 +181,7 @@ export class CustomRallyVehicle {
     bodyMotionExaggeration: 1.2,
     visualDiveScale: 0.40,
     visualSquatScale: 1.2,
-    visualRollScale: 4.8,
+    visualRollScale: 3.8,
     visualDroopExtension: 0.15,
 
     showDebugOverlays: false,
@@ -445,8 +445,8 @@ export class CustomRallyVehicle {
     const hbAuthority = inputs.handbrake ? 1.0 : 0.0;
     const dynamicAuthority = Math.max(brakeAuthority, slideAuthority, hbAuthority);
 
-    // Dynamic lock interpolates smoothly from cruise lock to rally lock (~12 deg at 95 mph, ~8.5 deg at 120 mph)
-    const baseRallyLock = maxSteerRad * Math.min(1.0, 36.0 / Math.max(16.0, speedMph)) * (1.0 - THREE.MathUtils.smoothstep(speedMph, 85.0, 125.0) * 0.50);
+    // Dynamic lock interpolates smoothly from cruise lock to rally lock
+    const baseRallyLock = maxSteerRad * Math.min(1.0, 36.0 / Math.max(16.0, speedMph));
     const effectiveLockRad = THREE.MathUtils.lerp(cruiseLockRad, baseRallyLock, dynamicAuthority);
 
     let targetSteer = -inputs.steer * effectiveLockRad;
@@ -707,13 +707,15 @@ export class CustomRallyVehicle {
         } else {
           const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
           const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
-          FmaxLat *= (1.0 + 0.55 * speedUndersteer * (1.0 - slideBlend));
+          const brakeFade = 1.0 - THREE.MathUtils.smoothstep(inputs.brake, 0.15, 0.75);
+          FmaxLat *= (1.0 + 0.55 * speedUndersteer * (1.0 - slideBlend) * brakeFade);
         }
       } else {
         // Front lateral grip in steady cornering: slightly moderated to ensure positive understeer gradient (front saturates before rear)
         const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
         const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
-        FmaxLat *= (1.0 - 0.10 * speedUndersteer * (1.0 - slideBlend));
+        const brakeFade = 1.0 - THREE.MathUtils.smoothstep(inputs.brake, 0.15, 0.75);
+        FmaxLat *= (1.0 - 0.10 * speedUndersteer * (1.0 - slideBlend) * brakeFade);
       }
 
       // Angular velocity update for wheel
@@ -1119,6 +1121,7 @@ export class CustomRallyVehicle {
     } else {
       targetPitchDeg = this.smoothedLongitudinalG * this.tuning.visualDiveScale * exag;
     }
+    this.currentVisualPitch += (targetPitchDeg - this.currentVisualPitch) * Math.min(1.0, 18.0 * frameDt);
 
     // Visual roll: derived purely from smoothed lateral G (no steering-key gating).
     // Turning right (smoothedLateralG > 0) rolls the car outward/left (-Z rotation).
@@ -1141,8 +1144,28 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Static normal load per rear wheel (~1,180 kg * 9.80665 / 4 = ~2,893 N)
-    const staticRearFz = 2893;
+    // Normal forces and axle load totals for symmetric load-driven droop
+    const fzFL = this.wheelNormalForces[0] || 0;
+    const fzFR = this.wheelNormalForces[1] || 0;
+    const fzRL = this.wheelNormalForces[2] || 0;
+    const fzRR = this.wheelNormalForces[3] || 0;
+    const frontTotalFz = fzFL + fzFR;
+    const rearTotalFz = fzRL + fzRR;
+    const totalFz = Math.max(1000, frontTotalFz + rearTotalFz);
+
+    // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
+    const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
+    const hbUnload = inputs.handbrake ? 0.65 : 0.0;
+    const rearAvgFz = (fzRL + fzRR) * 0.5;
+    const wheelUnload = THREE.MathUtils.clamp((2893 - rearAvgFz) / 2893, 0, 1.0);
+
+    // Symmetric rear wheel droop driven purely by load reduction (no state gating)
+    const targetDroopRatio = THREE.MathUtils.clamp(
+      wheelUnload * 0.25 + pitchUnload * 0.35 + hbUnload,
+      0,
+      1.0
+    );
+    const targetRearDroop = targetDroopRatio * this.tuning.visualDroopExtension * exag;
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1156,11 +1179,8 @@ export class CustomRallyVehicle {
       let visualDroop = 0;
       const isRearWheel = i >= 2;
       if (isRearWheel) {
-        const fzSelf = this.wheelNormalForces[i] || 0;
-        const unloadRatio = THREE.MathUtils.clamp((staticRearFz - fzSelf) / staticRearFz, 0, 1.0);
-        const targetDroop = unloadRatio * this.tuning.visualDroopExtension;
         const currentDroop = this.lastVisualDroop[i] || 0;
-        visualDroop = currentDroop + (targetDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
+        visualDroop = currentDroop + (targetRearDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       }
       this.lastVisualDroop[i] = visualDroop;
       const effectiveSuspLen = suspLen + visualDroop;
