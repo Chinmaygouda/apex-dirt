@@ -94,6 +94,14 @@ export interface CustomVehicleTuning {
   showDebugOverlays: boolean;
 }
 
+
+// Lane 3 visual droop calibration (visual only; no physics reads these).
+// Static per-wheel normal force (same constant the old rear-droop code used) and the unload fraction
+// at which a wheel starts / finishes visibly hanging. START/FULL are first estimates: tune them from
+// the lane3_frames.ts table, never by editing lane3_spec.ts.
+const VISUAL_STATIC_WHEEL_FZ_N = 2893;
+const VISUAL_DROOP_UNLOAD_START = 0.55;
+const VISUAL_DROOP_UNLOAD_FULL = 0.95;
 export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
@@ -1121,7 +1129,14 @@ export class CustomRallyVehicle {
     } else {
       targetPitchDeg = this.smoothedLongitudinalG * this.tuning.visualDiveScale * exag;
     }
-    this.currentVisualPitch += (targetPitchDeg - this.currentVisualPitch) * Math.min(1.0, 18.0 * frameDt);
+    // Lane 3: same rate limit as roll, so no per-frame pitch change above 1 deg at 30 fps (<= 30 deg/s)
+    const maxDeltaPitchDeg = 30.0 * frameDt;
+    const deltaPitchDeg = THREE.MathUtils.clamp(
+      (targetPitchDeg - this.currentVisualPitch) * Math.min(1.0, 18.0 * frameDt),
+      -maxDeltaPitchDeg,
+      maxDeltaPitchDeg
+    );
+    this.currentVisualPitch += deltaPitchDeg;
 
     // Visual roll: derived purely from smoothed lateral G (no steering-key gating).
     // Turning right (smoothedLateralG > 0) rolls the car outward/left (-Z rotation).
@@ -1144,28 +1159,10 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Normal forces and axle load totals for symmetric load-driven droop
-    const fzFL = this.wheelNormalForces[0] || 0;
-    const fzFR = this.wheelNormalForces[1] || 0;
-    const fzRL = this.wheelNormalForces[2] || 0;
-    const fzRR = this.wheelNormalForces[3] || 0;
-    const frontTotalFz = fzFL + fzFR;
-    const rearTotalFz = fzRL + fzRR;
-    const totalFz = Math.max(1000, frontTotalFz + rearTotalFz);
-
-    // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
-    const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
-    const hbUnload = inputs.handbrake ? 0.65 : 0.0;
-    const rearAvgFz = (fzRL + fzRR) * 0.5;
-    const wheelUnload = THREE.MathUtils.clamp((2893 - rearAvgFz) / 2893, 0, 1.0);
-
-    // Symmetric rear wheel droop driven purely by load reduction (no state gating)
-    const targetDroopRatio = THREE.MathUtils.clamp(
-      wheelUnload * 0.25 + pitchUnload * 0.35 + hbUnload,
-      0,
-      1.0
-    );
-    const targetRearDroop = targetDroopRatio * this.tuning.visualDroopExtension * exag;
+    // Lane 3: per-wheel droop driven ONLY by how far each wheel is unloaded (normal force vs static
+    // load) or airborne. No input flag (key, handbrake) is read. All four wheels use the same rule,
+    // so left/right (and front/rear) behaviour is symmetric by construction.
+    const maxWheelDroop = this.tuning.visualDroopExtension * exag;
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1175,12 +1172,12 @@ export class CustomRallyVehicle {
       const localAnchor = this.wheelAnchors[i];
       const suspLen = this.currentSuspensionLengths[i];
 
-      let visualDroop = 0;
-      const isRearWheel = i >= 2;
-      if (isRearWheel) {
-        const currentDroop = this.lastVisualDroop[i] || 0;
-        visualDroop = currentDroop + (targetRearDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
-      }
+      const unload = this.wheelInContact[i]
+        ? THREE.MathUtils.clamp(1.0 - (this.wheelNormalForces[i] || 0) / VISUAL_STATIC_WHEEL_FZ_N, 0, 1)
+        : 1.0;
+      const targetWheelDroop = maxWheelDroop * THREE.MathUtils.smoothstep(unload, VISUAL_DROOP_UNLOAD_START, VISUAL_DROOP_UNLOAD_FULL);
+      const currentDroop = this.lastVisualDroop[i] || 0;
+      const visualDroop = currentDroop + (targetWheelDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       this.lastVisualDroop[i] = visualDroop;
       const effectiveSuspLen = suspLen + visualDroop;
 

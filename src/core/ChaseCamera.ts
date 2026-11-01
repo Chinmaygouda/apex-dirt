@@ -13,6 +13,15 @@ export class ChaseCamera {
   public maxSpeedFov = 68;
   public currentHorizonRollDeg = 0;
 
+  // Lane 3: slide framing. Car appears ~35-45 deg off the camera axis when slipping 30-40 deg.
+  public offAxisGain = 1.1;               // camera off-axis angle = gain * slip angle ...
+  public maxOffAxisDeg = 45.0;            // ... capped here
+  // Lane 3: tree trunk avoidance (trunks are instanced meshes with no colliders, so they are supplied as circles).
+  public trunkClearance = 0.5;            // m kept between camera and any trunk surface
+  public minFollowDistance = 1.5;         // m, never pull closer than this
+  private trunks: { x: number; z: number; r: number }[] = [];
+  private occlusionDist = -1;
+
   public cameraMode: 'chase_follow' | 'chase_slide' = 'chase_follow';
 
   private currentTarget = new THREE.Vector3();
@@ -23,6 +32,11 @@ export class ChaseCamera {
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(this.baseFov, aspect, 0.1, 1000);
     this.camera.position.set(0, 4, -8);
+  }
+
+  /** Supply tree trunks as XZ circles (world units). Empty list disables avoidance. */
+  public setTrunkObstacles(trunks: { x: number; z: number; r: number }[]): void {
+    this.trunks = trunks;
   }
 
   public update(vehicle: AnyRallyVehicle, dt: number): void {
@@ -73,8 +87,12 @@ export class ChaseCamera {
     if (slideFactor > 0.001) {
       const right = new THREE.Vector3(1, 0, 0).applyQuaternion(chassisQuat);
       const outsideVec = isSlideRight ? right.clone().negate() : right.clone();
-      const offsetWeight = 0.72 * speedFactor * slideFactor;
-      targetCamDir.addScaledVector(outsideVec, offsetWeight).normalize();
+      // Off-axis angle follows the actual slip angle (gain 1.1, capped 45 deg), faded in with speed/slide factors.
+      const offAxisRad = Math.min(
+        THREE.MathUtils.degToRad(this.maxOffAxisDeg),
+        this.offAxisGain * slideAngleRad
+      ) * speedFactor * slideFactor;
+      targetCamDir.multiplyScalar(Math.cos(offAxisRad)).addScaledVector(outsideVec, Math.sin(offAxisRad)).normalize();
     }
 
     // Continuous frame-to-frame direction smoothing eliminates any 1-frame yaw jumps (< 3° / frame)
@@ -88,9 +106,53 @@ export class ChaseCamera {
       .sub(this.currentCamDir.clone().multiplyScalar(this.followDistance))
       .add(new THREE.Vector3(0, this.followHeight, 0));
 
+    // Trunk avoidance (part 1): shorten the follow offset so the camera stays in front of any trunk
+    // crossing the pivot->camera line. Pull-in is fast (<= 1.5 m per 30 fps frame), release is slow.
+    if (this.trunks.length > 0) {
+      const pivot = chassisPos.clone().add(new THREE.Vector3(0, 0.9, 0));
+      const offset = desiredPos.clone().sub(pivot);
+      const fullLen = offset.length();
+      let allowed = fullLen;
+      const dx = offset.x, dz = offset.z;
+      const planarLen = Math.hypot(dx, dz);
+      if (planarLen > 1e-4) {
+        const ux = dx / planarLen, uz = dz / planarLen;
+        for (const tr of this.trunks) {
+          const rx = tr.x - pivot.x, rz = tr.z - pivot.z;
+          const s = rx * ux + rz * uz;                       // distance along the ray to closest approach
+          if (s <= 0 || s > planarLen + tr.r + this.trunkClearance) continue;
+          const perp2 = rx * rx + rz * rz - s * s;
+          const rr = tr.r + this.trunkClearance;
+          if (perp2 >= rr * rr) continue;
+          const hitS = s - Math.sqrt(rr * rr - perp2);       // where the ray enters the padded trunk
+          allowed = Math.min(allowed, Math.max(this.minFollowDistance, (hitS / planarLen) * fullLen));
+        }
+      }
+      if (this.occlusionDist < 0) this.occlusionDist = fullLen;
+      if (allowed < this.occlusionDist) {
+        this.occlusionDist = Math.max(allowed, this.occlusionDist - 45.0 * dt);
+      } else {
+        this.occlusionDist += (allowed - this.occlusionDist) * (1.0 - Math.exp(-2.0 * dt));
+      }
+      if (this.occlusionDist < fullLen && fullLen > 1e-4) {
+        desiredPos.copy(pivot).addScaledVector(offset, this.occlusionDist / fullLen);
+      }
+    }
+
     // Smooth position interpolation
     const lerpFactor = Math.min(1.0, (1.0 - Math.pow(this.cameraLag, dt * 60)));
     this.camera.position.lerp(desiredPos, lerpFactor);
+
+    // Trunk avoidance (part 2): hard safety push-out so the lagged camera can never end up inside a trunk.
+    for (const tr of this.trunks) {
+      const px = this.camera.position.x - tr.x, pz = this.camera.position.z - tr.z;
+      const d = Math.hypot(px, pz), rr = tr.r + this.trunkClearance;
+      if (d < rr && this.camera.position.y < 4.5) {
+        const k = d > 1e-4 ? rr / d : 1;
+        this.camera.position.x = tr.x + (d > 1e-4 ? px * k : rr);
+        this.camera.position.z = tr.z + (d > 1e-4 ? pz * k : 0);
+      }
+    }
 
     // Look-ahead target centered cleanly on vehicle
     const lookAhead = forward.clone().multiplyScalar(1.2);
