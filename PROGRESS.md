@@ -51,4 +51,22 @@
   - Segmented cuboid collision bed provides artifact-free 120Hz physics contacts across the 1.6+ km spline without mesh seam snags.
 - **Failures / Conflicts**:
   - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase3-world` per Rule 1.
-- **Next**: Phase 4: Stage Gameplay + HUD (20 gates with twin red-white striped posts, stage timer, split-time pill, pace notes, countdown, finish, restart, localStorage best time, HUD parity).
+- **Next**: Phase 4
+
+## Phase 4: Stage Gameplay + HUD (Gates, Timer, Split Pills, Pace Notes, HUD Parity)
+- **Branch**: `phase4-gameplay`
+- **Status**: Completed on branch.
+- **Done**:
+  - 20 Checkpoint Gates: Twin red-white striped posts (3.2m height, 8.8m spacing) distributed along the 1.6+ km spline from $u=0.04$ to $u=0.98$ with lateral crossing detection corridor ($\le 6.5\text{m}$).
+  - Stage Timer & Start Countdown: High-precision stage timer (`MM:SS.ms`), 3-second start countdown (`3` -> `2` -> `1` -> `GO!`), finish state, and best time persisted in `localStorage['apex_dirt_best_time']`.
+  - Gate Progression & Split-Time Pill: "GATE x OF 20" banner badge and ~1.1s orange split-time pill (`#FF6D00`) on gate crossing.
+  - Curvature-Driven Pace-Note Box: Evaluates 60-100m ahead along the 3D spline ($u + 80\text{m}$) using horizontal cross product $\vec{v}_1 \times \vec{v}_2$ to determine severity 1–6 and turn direction (e.g. "HAIRPIN LEFT", "4 RIGHT", "CREST", "FLAT OUT") with severity-coded borders.
+  - HUD Parity: Distance counter in miles (`0.00 mi`), three input bars (`STEER` bilateral, `THROTTLE` green, `BRAKE` red), analog Rev Arc with gradient and redline tick at 7,200 RPM, gear numeral with manual `"M"` badge, digital speed in MPH, `"HB"` handbrake indicator, `"CLUTCH"` shift indicator, and drivetrain badge.
+  - Verified suites: `npm run build` (PASS), `npm run test:keyboard` (14/14 PASS), `npm run test:v6` (ALL 5 CRITERIA PASSED), `npm run test:user-session` (PASS), `npm run test:reverse` (ALL PASSED), `npm run test:browser-sync` (PASS), `measure:v4` (ALL PASSED), `measure:v1` (ALL PASSED).
+  - Generated overnight verification artifacts under `/overnight/phase4/`: 8 screenshots, 13.0s deterministic video (2.87 MB, 1280x720, 30 fps, H.264, < 20 MB), per-frame CSV, and `README.md`.
+- **Assumptions**:
+  - 80m lookahead along Catmull-Rom spline provides optimal advance warning for driver pace notes across 60–120 mph speeds.
+- **Failures / Conflicts**:
+  - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase4-gameplay` per Rule 1.
+- **Next**: Phase 5: Audio (Web Audio procedural synthesis: engine harmonic ladder, shift pitch dip, throttle brightness, exhaust pops, tyre skid noise, gravel/wind noise, brakes).
+
