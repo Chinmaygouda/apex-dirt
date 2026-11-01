@@ -16,5 +16,20 @@
   - Maintained full rally lock expansion under dynamic authority (`brakeAuthority`, `slideAuthority`, `hbAuthority`) to preserve intentional rally maneuvers and handbrake drifts.
 - **Failures / Conflicts**:
   - Isolated Window 3b in `replay_harness.ts` conflicts with `test:keyboard` Section 2: Window 3b resets the car to 0° slip at 95 mph and demands 0.80 G scrub deceleration from steer + throttle alone, whereas `test:keyboard` demands that steer + throttle at 95-100 mph does not break away into a spin/slide (slip $\le 12.0^\circ$). Numbers reported in `/overnight/phase1/README.md`.
-- **Next**:
-  - Phase 2: Effects (exhaust pops, tyre smoke and dust, persistent tyre tracks, camera horizon tilt, FOV, sun glare).
+- **Next**: Phase 2
+
+## Phase 2: Effects (>= 60 FPS, Particle Budgets)
+- **Branch**: `phase2-effects`
+- **Status**: Completed on branch.
+- **Done**:
+  - Exhaust Pops & Flames (2a): Orange flame cone (`0xff6600`) and smoke puff under rear bumper right side (`(0.55, -0.14, -1.38)`) for ~0.35-0.5s duration on throttle lift with brake (>0.10) and at each gear shift.
+  - Tyre Smoke & Dust (2b): Fixed zero-GC instanced mesh particle pool (384 instances). Small grey smoke puffs at handbrake peak, light dirt dust behind driven wheels on dirt road, and grass verge particle puffs.
+  - Persistent Tyre Tracks (2c): 4 independent ribbon meshes with 1,800 segments per tyre (7,200 segments total, exceeding >= 1,500 requirement). Ground raycasting with positive polygon offset (`-1.0, -4.0`) eliminates z-fighting and floating. Darkens into 4 parallel skid tracks in slides.
+  - Dynamic Camera & Post-Processing (2d): Horizon roll tilt up to 8.0°, smoothed to $\le 1.0^\circ$/frame (30°/s rate limit). Speed-dependent dynamic FOV widening from 50° up to 68°. Sun glare bloom when camera faces the sun vector.
+  - Verified suites: `npm run build` (PASS), `npm run test:keyboard` (14/14 PASS), `npm run test:v6` (ALL 5 CRITERIA PASSED), `npm run test:user-session` (PASS), `npm run test:reverse` (ALL PASSED), `npm run test:browser-sync` (PASS), `measure:v4` (ALL PASSED), `measure:v1` (ALL PASSED).
+  - Generated overnight verification artifacts under `/overnight/phase2/`: 8 screenshots, 13.0s deterministic video (1.88 MB, 1280x720, 30 fps, H.264, < 20 MB), per-frame CSV, and `README.md`.
+- **Assumptions**:
+  - Pre-allocated instanced particle pools and fixed ribbon index buffers to guarantee steady 60+ FPS without runtime garbage collection spikes.
+- **Failures / Conflicts**:
+  - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase2-effects` per Rule 1.
+- **Next**: Phase 3: World v1 (spline road >= 1.5 km with banking & elevation, terrain, instanced forest, props, shadows, haze, clouds, sun, palette swatches in README).

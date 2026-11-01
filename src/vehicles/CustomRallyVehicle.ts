@@ -199,13 +199,13 @@ export class CustomRallyVehicle {
   private wheelAngularVel = [0, 0, 0, 0];
   private prevSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
   private currentSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
-  private wheelInContact = [true, true, true, true];
+  public wheelInContact = [true, true, true, true];
   private prevWheelInContact = [true, true, true, true];
   private wheelNormalForces = [0, 0, 0, 0];
   private wheelLateralForces = [0, 0, 0, 0];
   private wheelLongitudinalForces = [0, 0, 0, 0];
   private wheelSlipAngles = [0, 0, 0, 0];
-  private wheelSlipRatios = [0, 0, 0, 0];
+  public wheelSlipRatios = [0, 0, 0, 0];
   private wheelRotations = [0, 0, 0, 0];
 
   // Steering & Drift State
@@ -1175,7 +1175,6 @@ export class CustomRallyVehicle {
       const localAnchor = this.wheelAnchors[i];
       const suspLen = this.currentSuspensionLengths[i];
 
-      // Symmetric rear wheel droop driven purely by per-wheel load reduction (no state gating)
       let visualDroop = 0;
       const isRearWheel = i >= 2;
       if (isRearWheel) {

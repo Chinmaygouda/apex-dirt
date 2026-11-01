@@ -64,6 +64,10 @@ async function initGame() {
   // 7. Custom Tyre Model Vehicle (Phase 2)
   const vehicle = new CustomRallyVehicle(scene, physics);
 
+  // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
+  const { VehicleEffects } = await import('./effects/VehicleEffects');
+  const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
+
   // 8. Chase Camera
   const camera = new ChaseCamera(window.innerWidth / window.innerHeight);
 
@@ -299,6 +303,9 @@ async function initGame() {
 
     // Update Chase Camera
     camera.update(vehicle, frameDt);
+
+    // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
+    vehicleEffects.update(frameDt, inputs, camera.camera, sunLight);
 
     // Follow vehicle with directional sunlight shadow camera
     if (vehicle.chassisMesh) {
