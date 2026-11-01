@@ -99,8 +99,8 @@ export class StageManager {
         splitTimeS: 0,
       });
 
-      // Twin red-white striped posts (width 0.4m, height 3.2m, spaced 8.8m apart)
-      const postDistance = 4.4;
+      // Twin red-white striped posts (spaced 11.0m apart at track guardrail boundary)
+      const postDistance = 5.5;
       this.createTwinStripedPosts(pt, binormal, tangent, postDistance, i + 1);
     }
   }

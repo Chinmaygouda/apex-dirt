@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { PhysicsWorld } from './physics/PhysicsWorld';
 import { InputManager } from './core/InputManager';
-import { SandboxEnvironment } from './world/SandboxEnvironment';
 import { CustomRallyVehicle } from './vehicles/CustomRallyVehicle';
 import { ChaseCamera } from './core/ChaseCamera';
 import { TelemetryHUD } from './ui/TelemetryHUD';
@@ -52,15 +51,11 @@ async function initGame() {
   scene.add(sunLight);
   scene.add(sunLight.target);
 
-  // 4. Procedural Low-Poly Sky & Clouds
-  createSkyAndClouds(scene);
-
-  // 5. Physics Initialization (Rapier3D WASM)
+  // 4. Physics Initialization (Rapier3D WASM)
   const physics = new PhysicsWorld();
   await physics.init();
 
-  // 6. World Sandbox Environment & 1.6+ km Spline Rally Stage
-  const sandbox = new SandboxEnvironment(scene, physics);
+  // 5. 1.68 km Closed-Circuit Racing Track (Clean, solid Y=0 ground with continuous guardrails)
   const rallyWorld = new RallyStageWorld(scene, physics);
 
   // 7. Custom Tyre Model Vehicle
@@ -362,43 +357,6 @@ async function initGame() {
   }
 
   requestAnimationFrame(animate);
-}
-
-function createSkyAndClouds(scene: THREE.Scene): void {
-  // Low-poly drifting cloud clusters
-  const cloudsGroup = new THREE.Group();
-  const cloudMat = new THREE.MeshStandardMaterial({
-    color: THREE_PALETTE.cloudWhite,
-    roughness: 0.9,
-    metalness: 0.05,
-    flatShading: true,
-  });
-
-  const cloudGeom = new THREE.IcosahedronGeometry(1, 0); // Faceted icosahedron
-
-  for (let c = 0; c < 14; c++) {
-    const singleCloud = new THREE.Group();
-    const numPuffs = 4 + Math.floor(Math.random() * 5);
-    for (let p = 0; p < numPuffs; p++) {
-      const puff = new THREE.Mesh(cloudGeom, cloudMat);
-      const scale = 5 + Math.random() * 8;
-      puff.scale.set(scale * 1.5, scale * 0.7, scale * 1.2);
-      puff.position.set(
-        (p - numPuffs / 2) * 5 + (Math.random() - 0.5) * 4,
-        (Math.random() - 0.5) * 2,
-        (Math.random() - 0.5) * 4
-      );
-      singleCloud.add(puff);
-    }
-    singleCloud.position.set(
-      (Math.random() - 0.5) * 350,
-      45 + Math.random() * 25,
-      (Math.random() - 0.5) * 350
-    );
-    cloudsGroup.add(singleCloud);
-  }
-
-  scene.add(cloudsGroup);
 }
 
 // Start game

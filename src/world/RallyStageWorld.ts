@@ -3,40 +3,49 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 
 /**
- * Stage Palette Swatches (Hand-picked from references, 0 image textures)
+ * Stage Palette Swatches (Curated for a high-end, clean low-poly racing circuit)
  */
 export const STAGE_PALETTE = {
   // Road & Surfaces
-  ROAD_DIRT_LIT: '#766D64',      // Main packed gravel dirt track
-  ROAD_DIRT_RUT: '#5E564F',      // Darker compacted tyre ruts
-  ROAD_DIRT_SHADOW: '#4D4742',   // Shaded dirt edge
-  VERGE_GRASS: '#637852',        // Sage grass road verge
-  TERRAIN_GRASS: '#556A47',      // Rolling hill terrain base
-  TERRAIN_ROCK: '#6C6863',       // Exposed rock and ridge facets
+  ROAD_ASPHALT: '#2b2d30',       // Main asphalt racing line
+  ROAD_RUT: '#1e2022',           // Darker compacted tyre rubber line
+  ROAD_EDGE: '#36393e',          // Outer road edge
+  ROAD_DIRT_SHADOW: '#222528',   // Ground shadow tone for hemisphere light
+  KERB_RED: '#d32f2f',           // FIA-spec red apex rumble kerb
+  KERB_WHITE: '#f8f9fa',         // FIA-spec white apex rumble kerb
+  KERB_CONCRETE: '#85898e',      // Neutral concrete kerb on straights
+  VERGE_GRASS: '#4d683a',        // Sage grass road verge
+  TERRAIN_GRASS: '#466435',      // Surrounding meadow ground base
+  TERRAIN_GRASS_LIT: '#547540',  // Sunlit meadow facet
 
-  // Instanced Forest (Low-Poly)
-  PINE_FOLIAGE_DARK: '#2E4336',  // Deep coniferous evergreen
-  PINE_FOLIAGE_LIT: '#3B5746',   // Sunlit pine needle tips
-  BROAD_FOLIAGE_DARK: '#425838', // Deciduous deep canopy
-  BROAD_FOLIAGE_LIT: '#57734A',  // Sunlit outer leafy facet
-  TREE_TRUNK_TIMBER: '#514840',  // Weathered bark & timber post
+  // Guardrails & Barriers
+  ARMCO_SILVER: '#b0b5ba',       // Galvanized corrugated steel barrier
+  ARMCO_POST: '#3a3d40',         // Steel I-beam barrier post
+  HAZARD_RED: '#e53935',         // Reflective corner hazard red
+  HAZARD_WHITE: '#ffffff',       // Reflective corner hazard white
 
-  // Roadside Props
-  CHEVRON_YELLOW: '#E5A912',     // Corner warning chevron board
-  CHEVRON_ARROW: '#1E1B18',      // High-contrast chevron arrow
-  TEAL_MARKER: '#1B8B8B',        // Rally distance / split marker sign
-  TEAL_MARKER_DARK: '#126666',   // Shadow face of marker
-  FENCE_WOOD: '#7A6B5D',         // Weathered split-rail fence wood
-  SPECTATOR_RED: '#C0392B',      // Spectator jacket crimson
-  SPECTATOR_BLUE: '#2980B9',     // Spectator jacket cobalt
-  SPECTATOR_YELLOW: '#F1C40F',    // Spectator jacket yellow
+  // Instanced Trees (Low-Poly)
+  PINE_FOLIAGE_DARK: '#22382a',  // Deep coniferous evergreen
+  PINE_FOLIAGE_LIT: '#32503c',   // Sunlit pine tips
+  BROAD_FOLIAGE_DARK: '#3c5432', // Deciduous deep canopy
+  BROAD_FOLIAGE_LIT: '#4f7042',  // Sunlit outer leafy facet
+  TREE_TRUNK_TIMBER: '#463c34',  // Weathered bark & timber post
+
+  // Roadside Props & Gantry
+  CHEVRON_YELLOW: '#f5b018',     // Corner warning chevron board
+  CHEVRON_ARROW: '#181614',      // High-contrast chevron arrow
+  GANTRY_STEEL: '#4a4e54',       // Steel lattice gantry structure
+  LIGHT_RED: '#ff1744',          // Start light red
+  LIGHT_GREEN: '#00e676',        // Start light green
+  MARKER_BOARD: '#f5f5f5',       // Distance brake marker board
+  MARKER_TEXT: '#111111',        // Marker text black
 
   // Sky & Atmosphere
-  SKY_ZENITH: '#4B6278',         // Deep mountain zenith sky
-  SKY_HORIZON: '#8FAEC9',        // Soft blue horizon haze
-  FOG_HAZE: '#8FAEC9',           // Horizon depth cue
-  CLOUD_WHITE: '#F3F6FA',        // Fluffy cumulus cloud highlight
-  SUN_WARMTH: '#FFF8E7',         // Warm low-angle afternoon sun
+  SKY_ZENITH: '#3b526b',         // Clean mountain zenith sky
+  SKY_HORIZON: '#8aa8c4',        // Soft blue horizon haze
+  FOG_HAZE: '#8aa8c4',           // Horizon depth cue
+  CLOUD_WHITE: '#f3f6fa',        // Cumulus cloud highlight
+  SUN_WARMTH: '#fff8ea',         // Crisp low-angle afternoon sun
 };
 
 export interface RoadSample {
@@ -54,8 +63,8 @@ export class RallyStageWorld {
   public spline: THREE.CatmullRomCurve3;
   public totalLength: number = 0;
   private samples: RoadSample[] = [];
-  private numSamples: number = 400; // Sample points along spline
-  private roadHalfWidth = 3.8; // 7.6m road width
+  private numSamples: number = 500; // High resolution for silky smooth curves
+  private roadHalfWidth = 5.0; // 10.0m total track width
 
   // Physics colliders
   private physicsColliders: RAPIER.Collider[] = [];
@@ -72,6 +81,7 @@ export class RallyStageWorld {
     this.precomputeRoadSamples();
 
     this.createTerrainAndRoad();
+    this.createStartFinishGantry();
     this.createSideGuardrails();
     this.createInstancedForest();
     this.createRoadsideProps();
@@ -81,45 +91,39 @@ export class RallyStageWorld {
   }
 
   /**
-   * Build authentic 1.5+ km rally stage curve with elevation and sweepers
+   * Builds an authentic, exciting 1.68 km closed-circuit racing track at Y = 0.
+   * Starts at (0, 0, -50), passes the Start/Finish line at (0, 0, 0) heading +Z,
+   * offers a high-speed ~200m main straight, high-speed sweeping curves, technical S-bends,
+   * a 180-degree carousel hairpin, and returns smoothly to the start line.
    */
   private buildSplineRoute(): THREE.CatmullRomCurve3 {
-    // 34 control points spanning > 1,600 meters in length
     const rawPoints: [number, number, number][] = [
-      [0, 0, 0],             // Start line straight
-      [0, 0, 80],
-      [12, 1.2, 160],        // Gentle crest right
-      [42, 3.5, 240],
-      [90, 6.0, 310],        // Fast sweeping right (turn 1)
-      [135, 7.5, 370],
-      [165, 8.0, 440],       // Ridge crest
-      [150, 6.2, 520],       // Sweeper left downhill
-      [110, 3.8, 590],
-      [45, 1.5, 650],        // Fast straight into dip
-      [-30, 0.2, 700],
-      [-95, 0.0, 735],       // Turn-in for hairpin left
-      [-160, 1.8, 730],      // Hairpin apex
-      [-210, 4.0, 680],      // Hairpin exit climbing
-      [-230, 7.5, 600],      // Hill climb section
-      [-225, 11.0, 510],
-      [-200, 14.5, 430],     // S-bends on high ridge
-      [-155, 16.0, 360],     // High pass summit (16m elevation)
-      [-180, 13.5, 290],     // Downhill technical S-bend
-      [-235, 10.0, 240],
-      [-280, 6.8, 200],      // Long left sweeper into valley
-      [-300, 4.0, 130],
-      [-295, 2.0, 50],
-      [-260, 0.8, -30],      // Fast kink right
-      [-200, 0.2, -100],
-      [-130, 0.0, -150],     // Valley floor straightaway
-      [-50, 0.0, -180],
-      [30, 0.5, -170],       // Fast uphill sweeping right
-      [110, 2.2, -130],
-      [160, 4.0, -60],       // Cresting turn
-      [155, 3.0, 20],        // Downhill approach
-      [110, 1.5, 90],        // Return sweep towards start
-      [50, 0.5, 60],
-      [0, 0, 0]              // Closed loop transition
+      [0, 0, -50],      // 0: Approach to start line
+      [0, 0, 0],        // 1: Start/Finish line (Z=0, heading straight +Z)
+      [0, 0, 60],       // 2: Main straight
+      [0, 0, 130],      // 3: Main straight high-speed approach
+      [0, 0, 190],      // 4: Turn 1 Braking zone
+      [25, 0, 260],     // 5: Turn 1 Entry (Fast Right Sweeper)
+      [75, 0, 310],     // 6: Turn 1 Apex
+      [135, 0, 315],    // 7: Turn 2 Entry
+      [185, 0, 275],    // 8: Turn 2 Exit / S-chicane entry
+      [195, 0, 205],    // 9: S-chicane Left Apex
+      [175, 0, 140],    // 10: S-chicane Right Transition
+      [150, 0, 85],     // 11: Infield intermediate straight
+      [165, 0, 20],     // 12: Turn 5 (The Carousel Hairpin Entry)
+      [190, 0, -40],    // 13: Carousel Outer Sweep
+      [170, 0, -100],   // 14: Carousel Apex
+      [120, 0, -135],   // 15: Carousel Exit
+      [50, 0, -130],    // 16: South straightaway
+      [-20, 0, -105],   // 17: Turn 7 Left Kink
+      [-80, 0, -65],    // 18: Turn 8 Chicane Entry
+      [-130, 0, -15],   // 19: Turn 8 Apex
+      [-145, 0, 45],    // 20: West Sweeper
+      [-130, 0, 115],   // 21: North-West Hairpin Entry
+      [-85, 0, 150],    // 22: North-West Hairpin Apex
+      [-45, 0, 115],    // 23: Return Sweeper
+      [-20, 0, 45],     // 24: Final Turn Entry
+      [-4, 0, -15],     // 25: Final Turn Exit onto Main Straight
     ];
 
     const vectors = rawPoints.map(p => new THREE.Vector3(p[0], p[1], p[2]));
@@ -127,7 +131,7 @@ export class RallyStageWorld {
   }
 
   /**
-   * Precomputes road coordinate frames and banking along the route
+   * Precomputes road coordinate frames and authentic race camber along the circuit
    */
   private precomputeRoadSamples(): void {
     this.samples = [];
@@ -138,15 +142,14 @@ export class RallyStageWorld {
       const pt = this.spline.getPointAt(u);
       const tangent = this.spline.getTangentAt(u).normalize();
 
-      // Estimate curvature from tangent difference for natural rally road banking
-      const uNext = Math.min(1.0, u + 0.01);
+      // Estimate curvature from tangent difference for realistic road camber
+      const uNext = (u + 0.004) % 1.0;
       const tangNext = this.spline.getTangentAt(uNext).normalize();
       const crossY = tangent.x * tangNext.z - tangent.z * tangNext.x;
-      const bankingRad = THREE.MathUtils.clamp(-crossY * 6.5, -0.12, 0.12); // up to ~7° banking
+      const bankingRad = THREE.MathUtils.clamp(-crossY * 4.5, -0.06, 0.06); // Up to ~3.5° banking
 
       const worldUp = new THREE.Vector3(0, 1, 0);
       let binormal = new THREE.Vector3().crossVectors(tangent, worldUp).normalize();
-      // Apply banking around tangent
       binormal.applyAxisAngle(tangent, bankingRad);
       const normal = new THREE.Vector3().crossVectors(binormal, tangent).normalize();
 
@@ -163,82 +166,41 @@ export class RallyStageWorld {
   }
 
   /**
-   * Computes seamless alpine terrain elevation at (x, z), naturally anchored to the road height.
+   * Flat ground plane elevation at Y = 0: ensures zero cliffs, zero falling through world
    */
-  public getTerrainElevation(x: number, z: number): number {
-    let minDistSq = Infinity;
-    let nearestY = 0;
-
-    const step = 6;
-    let bestIdx = 0;
-    const len = this.samples.length;
-    for (let i = 0; i < len; i += step) {
-      const p = this.samples[i].point;
-      const dx = x - p.x;
-      const dz = z - p.z;
-      const dSq = dx * dx + dz * dz;
-      if (dSq < minDistSq) {
-        minDistSq = dSq;
-        bestIdx = i;
-      }
-    }
-
-    const start = Math.max(0, bestIdx - step);
-    const end = Math.min(len - 1, bestIdx + step);
-    for (let i = start; i <= end; i++) {
-      const p = this.samples[i].point;
-      const dx = x - p.x;
-      const dz = z - p.z;
-      const dSq = dx * dx + dz * dz;
-      if (dSq < minDistSq) {
-        minDistSq = dSq;
-        nearestY = p.y;
-      }
-    }
-
-    const dist = Math.sqrt(minDistSq);
-
-    // Natural undulating alpine hills
-    const wave = Math.sin(x * 0.007) * Math.cos(z * 0.007) * 7.0 +
-                 Math.sin(x * 0.018) * Math.sin(z * 0.014) * 3.0;
-    const baseHills = Math.max(-1.5, wave);
-
-    // If within road verge: flush under road
-    if (dist <= 8.5) {
-      return nearestY - 0.20;
-    } else if (dist < 55.0) {
-      // Smooth natural shoulder slope connecting road to hills
-      const t = (dist - 8.5) / (55.0 - 8.5);
-      const smooth = t * t * (3 - 2 * t);
-      return THREE.MathUtils.lerp(nearestY - 0.20, baseHills, smooth);
-    } else {
-      return baseHills;
-    }
+  public getTerrainElevation(_x: number, _z: number): number {
+    return 0.0;
   }
 
   /**
-   * Creates the 3D ribbon road mesh with vertex colors and physics collision trimesh
+   * Creates the 3D circuit ribbon road mesh with red/white apex kerbs and 1:1 trimesh collider
    */
   private createTerrainAndRoad(): void {
-    const numCross = 8; // Cross-section profile: outer verge L, berm L, rut L, center, rut R, berm R, outer verge R
-    const crossOffsets = [-8.5, -5.2, -3.6, -1.8, 0.0, 1.8, 3.6, 5.2, 8.5];
-    const crossHeights = [-0.15, 0.02, 0.04, 0.01, 0.06, 0.01, 0.04, 0.02, -0.15];
+    // 9 cross-section points: Verge L, Kerb L, Road Edge L, Rut L, Center, Rut R, Road Edge R, Kerb R, Verge R
+    const crossOffsets = [-7.5, -5.3, -4.8, -2.2, 0.0, 2.2, 4.8, 5.3, 7.5];
+    const crossHeights = [-0.01, 0.045, 0.02, 0.035, 0.04, 0.035, 0.02, 0.045, -0.01];
     const N = crossOffsets.length;
 
     const vertices: number[] = [];
     const colors: number[] = [];
     const indices: number[] = [];
 
-    const cRoadLit = new THREE.Color(STAGE_PALETTE.ROAD_DIRT_LIT);
-    const cRoadRut = new THREE.Color(STAGE_PALETTE.ROAD_DIRT_RUT);
+    const cRoadAsphalt = new THREE.Color(STAGE_PALETTE.ROAD_ASPHALT);
+    const cRoadRut = new THREE.Color(STAGE_PALETTE.ROAD_RUT);
+    const cRoadEdge = new THREE.Color(STAGE_PALETTE.ROAD_EDGE);
+    const cKerbRed = new THREE.Color(STAGE_PALETTE.KERB_RED);
+    const cKerbWhite = new THREE.Color(STAGE_PALETTE.KERB_WHITE);
+    const cKerbConcrete = new THREE.Color(STAGE_PALETTE.KERB_CONCRETE);
     const cVerge = new THREE.Color(STAGE_PALETTE.VERGE_GRASS);
-    const cTerrain = new THREE.Color(STAGE_PALETTE.TERRAIN_GRASS);
 
     for (let i = 0; i <= this.numSamples; i++) {
       const sample = this.samples[i % this.numSamples];
       const pt = sample.point;
       const binormal = sample.binormal;
       const normal = sample.normal;
+
+      const isCorner = Math.abs(sample.bankingRad) > 0.012;
+      const kerbStripeRed = Math.floor(i / 2) % 2 === 0;
 
       for (let j = 0; j < N; j++) {
         const offset = crossOffsets[j];
@@ -250,27 +212,33 @@ export class RallyStageWorld {
 
         vertices.push(vx, vy, vz);
 
-        // Pick color across cross section
+        // Assign styling across cross section
         const absOffset = Math.abs(offset);
         let vertexCol: THREE.Color;
-        if (absOffset <= 1.0) {
-          vertexCol = cRoadLit; // Center crown
-        } else if (absOffset <= 2.6) {
-          vertexCol = cRoadRut; // Packed ruts
-        } else if (absOffset <= 3.8) {
-          vertexCol = cRoadLit; // Road outer edge
-        } else if (absOffset <= 5.5) {
-          vertexCol = cVerge;   // Sage grass verge
+
+        if (absOffset > 5.3) {
+          vertexCol = cVerge; // Outer grass verge
+        } else if (absOffset > 4.7) {
+          // Apex rumble kerb
+          if (isCorner) {
+            vertexCol = kerbStripeRed ? cKerbRed : cKerbWhite;
+          } else {
+            vertexCol = cKerbConcrete;
+          }
+        } else if (absOffset <= 1.0) {
+          vertexCol = cRoadAsphalt; // Center crown
+        } else if (absOffset <= 3.0) {
+          vertexCol = cRoadRut;     // Compacted tyre ruts
         } else {
-          vertexCol = cTerrain; // Surrounding countryside
+          vertexCol = cRoadEdge;    // Road shoulder
         }
 
         // Add subtle per-vertex variation
-        const noise = (Math.sin(i * 0.4 + j * 1.3) * 0.04);
+        const noise = (Math.sin(i * 0.5 + j * 1.5) * 0.025);
         colors.push(
-          vertexCol.r + noise,
-          vertexCol.g + noise,
-          vertexCol.b + noise
+          Math.max(0, Math.min(1, vertexCol.r + noise)),
+          Math.max(0, Math.min(1, vertexCol.g + noise)),
+          Math.max(0, Math.min(1, vertexCol.b + noise))
         );
       }
     }
@@ -299,8 +267,8 @@ export class RallyStageWorld {
 
     const roadMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.92,
-      metalness: 0.04,
+      roughness: 0.88,
+      metalness: 0.08,
       flatShading: true,
     });
 
@@ -309,20 +277,27 @@ export class RallyStageWorld {
     roadMesh.castShadow = false;
     this.group.add(roadMesh);
 
-    // Large surrounding terrain bed (1600m x 1600m) smoothly embedded to road elevation
-    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 80, 80);
+    // Large surrounding terrain ground bed (1600m x 1600m) flat at Y = 0.0
+    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 40, 40);
     terrainGeom.rotateX(-Math.PI / 2);
-    const tPos = terrainGeom.attributes.position;
-    for (let k = 0; k < tPos.count; k++) {
-      const px = tPos.getX(k);
-      const pz = tPos.getZ(k);
-      const elevation = this.getTerrainElevation(px, pz);
-      tPos.setY(k, elevation);
+    const terrainPos = terrainGeom.attributes.position;
+    const terrainColors: number[] = [];
+    const cGrass = new THREE.Color(STAGE_PALETTE.TERRAIN_GRASS);
+    const cGrassLit = new THREE.Color(STAGE_PALETTE.TERRAIN_GRASS_LIT);
+
+    for (let k = 0; k < terrainPos.count; k++) {
+      terrainPos.setY(k, -0.01);
+      const px = terrainPos.getX(k);
+      const pz = terrainPos.getZ(k);
+      const noise = (Math.sin(px * 0.015) * Math.cos(pz * 0.015) + 1) * 0.5;
+      const mixed = cGrass.clone().lerp(cGrassLit, noise * 0.25);
+      terrainColors.push(mixed.r, mixed.g, mixed.b);
     }
+    terrainGeom.setAttribute('color', new THREE.Float32BufferAttribute(terrainColors, 3));
     terrainGeom.computeVertexNormals();
 
     const terrainMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(STAGE_PALETTE.TERRAIN_GRASS),
+      vertexColors: true,
       roughness: 0.95,
       metalness: 0.02,
       flatShading: true,
@@ -331,29 +306,140 @@ export class RallyStageWorld {
     terrainMesh.receiveShadow = true;
     this.group.add(terrainMesh);
 
-    // Build Rapier physics colliders: 1:1 exact trimesh for road ribbon and surrounding terrain
-    // Guarantees zero height discrepancies (no sinking beneath road) and no falling through the world
+    // Build Rapier physics colliders: 1:1 exact trimesh for road ribbon and ground bed
     const rapier = this.physics.rapier;
     const roadBody = this.physics.world.createRigidBody(rapier.RigidBodyDesc.fixed());
     const roadColDesc = rapier.ColliderDesc.trimesh(
       new Float32Array(vertices),
       new Uint32Array(indices)
-    ).setFriction(0.9).setRestitution(0.0);
+    ).setFriction(0.85).setRestitution(0.0);
     const roadCollider = this.physics.world.createCollider(roadColDesc, roadBody);
     this.physicsColliders.push(roadCollider);
 
-    // Surrounding terrain bed collision: full 1600m x 1600m continuous collision prevents falling through map off-road
-    const terrainBody = this.physics.world.createRigidBody(
-      rapier.RigidBodyDesc.fixed()
-    );
+    // Surrounding terrain bed collision: full 1600m x 1600m solid floor prevents falling through world
+    const terrainBody = this.physics.world.createRigidBody(rapier.RigidBodyDesc.fixed());
     const terrainVertices = new Float32Array(terrainGeom.attributes.position.array);
     const terrainIndices = new Uint32Array(terrainGeom.index!.array);
     const terrainColDesc = rapier.ColliderDesc.trimesh(
       terrainVertices,
       terrainIndices
-    ).setFriction(0.7).setRestitution(0.0);
+    ).setFriction(0.65).setRestitution(0.0);
     const terrainCollider = this.physics.world.createCollider(terrainColDesc, terrainBody);
     this.physicsColliders.push(terrainCollider);
+
+    // Outer boundary walls at 800m perimeter to prevent extreme out-of-bounds escape
+    const wallHeight = 20;
+    const boundaryWalls = [
+      { x: 0, z: -800, hx: 800, hz: 4 },
+      { x: 0, z: 800, hx: 800, hz: 4 },
+      { x: -800, z: 0, hx: 4, hz: 800 },
+      { x: 800, z: 0, hx: 4, hz: 800 },
+    ];
+    for (const w of boundaryWalls) {
+      const bDesc = rapier.RigidBodyDesc.fixed().setTranslation(w.x, wallHeight / 2, w.z);
+      const bBody = this.physics.world.createRigidBody(bDesc);
+      const cDesc = rapier.ColliderDesc.cuboid(w.hx, wallHeight / 2, w.hz).setFriction(0.3);
+      this.physics.world.createCollider(cDesc, bBody);
+    }
+  }
+
+  /**
+   * Start / Finish Line Checkered Grid & Overhead Steel Lattice Gantry
+   */
+  private createStartFinishGantry(): void {
+    const gantryGroup = new THREE.Group();
+
+    // 1. Checkered Start Line Grid (painted on track at Z = 0)
+    const checkerGroup = new THREE.Group();
+    const rows = 4;
+    const cols = 14;
+    const tileW = 9.2 / cols;
+    const tileL = 2.4 / rows;
+    const whiteMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const blackMat = new THREE.MeshBasicMaterial({ color: 0x181a1c });
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const isWhite = (r + c) % 2 === 0;
+        const geom = new THREE.PlaneGeometry(tileW * 0.96, tileL * 0.96);
+        geom.rotateX(-Math.PI / 2);
+        const tile = new THREE.Mesh(geom, isWhite ? whiteMat : blackMat);
+        tile.position.set(
+          -4.6 + (c + 0.5) * tileW,
+          0.045, // Flush above road surface
+          -1.2 + (r + 0.5) * tileL
+        );
+        tile.receiveShadow = true;
+        checkerGroup.add(tile);
+      }
+    }
+    gantryGroup.add(checkerGroup);
+
+    // 2. Overhead Steel Lattice Gantry
+    const steelMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(STAGE_PALETTE.GANTRY_STEEL),
+      metalness: 0.85,
+      roughness: 0.35,
+      flatShading: true,
+    });
+
+    // Twin support towers on left and right
+    const towerGeom = new THREE.BoxGeometry(0.55, 6.0, 0.55);
+    const leftTower = new THREE.Mesh(towerGeom, steelMat);
+    leftTower.position.set(-6.2, 3.0, 0);
+    leftTower.castShadow = true;
+    gantryGroup.add(leftTower);
+
+    const rightTower = new THREE.Mesh(towerGeom, steelMat);
+    rightTower.position.set(6.2, 3.0, 0);
+    rightTower.castShadow = true;
+    gantryGroup.add(rightTower);
+
+    // Horizontal truss span across track
+    const trussGeom = new THREE.BoxGeometry(13.2, 0.75, 0.85);
+    const truss = new THREE.Mesh(trussGeom, steelMat);
+    truss.position.set(0, 5.8, 0);
+    truss.castShadow = true;
+    gantryGroup.add(truss);
+
+    // Gantry Banner
+    const bannerGeom = new THREE.BoxGeometry(7.5, 1.2, 0.1);
+    const bannerMat = new THREE.MeshStandardMaterial({
+      color: 0x0f172a,
+      roughness: 0.4,
+      metalness: 0.5,
+    });
+    const banner = new THREE.Mesh(bannerGeom, bannerMat);
+    banner.position.set(0, 5.8, -0.45);
+    banner.castShadow = true;
+    gantryGroup.add(banner);
+
+    // Signal Light Pods
+    const lightPodGeom = new THREE.CylinderGeometry(0.18, 0.18, 0.15, 8);
+    lightPodGeom.rotateX(Math.PI / 2);
+    const redLightMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(STAGE_PALETTE.LIGHT_RED),
+      emissive: new THREE.Color(STAGE_PALETTE.LIGHT_RED),
+      emissiveIntensity: 0.8,
+    });
+    const greenLightMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(STAGE_PALETTE.LIGHT_GREEN),
+      emissive: new THREE.Color(STAGE_PALETTE.LIGHT_GREEN),
+      emissiveIntensity: 0.8,
+    });
+
+    [-1.6, -0.8, 0.0].forEach((x) => {
+      const redLight = new THREE.Mesh(lightPodGeom, redLightMat);
+      redLight.position.set(x, 5.8, -0.52);
+      gantryGroup.add(redLight);
+    });
+    [0.8, 1.6].forEach((x) => {
+      const greenLight = new THREE.Mesh(lightPodGeom, greenLightMat);
+      greenLight.position.set(x, 5.8, -0.52);
+      gantryGroup.add(greenLight);
+    });
+
+    this.group.add(gantryGroup);
   }
 
   /**
@@ -365,50 +451,43 @@ export class RallyStageWorld {
     const railIndices: number[] = [];
 
     const postGroup = new THREE.Group();
-    const postGeom = new THREE.BoxGeometry(0.12, 1.1, 0.12);
+    const postGeom = new THREE.BoxGeometry(0.12, 1.05, 0.12);
     const postMat = new THREE.MeshStandardMaterial({
-      color: 0x3d352e,
+      color: new THREE.Color(STAGE_PALETTE.ARMCO_POST),
       roughness: 0.85,
-      flatShading: true
+      metalness: 0.3,
+      flatShading: true,
     });
 
-    const sides = [-4.5, 4.5]; // Left and Right offsets from centerline (road half-width is 3.8m)
-    const startSkipSamples = Math.floor(this.numSamples * 0.015); // Opening at start line
+    const sides = [-5.5, 5.5]; // Left and Right offsets from centerline (road half-width is 5.0m)
 
     sides.forEach((sideOffset) => {
       let vertOffset = railVertices.length / 3;
       let prevValidIdx = -1;
 
-      for (let i = 0; i < this.numSamples; i++) {
-        // Skip open start/paddock gate so car has free entry/exit at start
-        if (i < startSkipSamples || i > this.numSamples - startSkipSamples) {
-          prevValidIdx = -1;
-          continue;
-        }
-
-        const sample = this.samples[i];
+      for (let i = 0; i <= this.numSamples; i++) {
+        const sample = this.samples[i % this.numSamples];
         const pt = sample.point;
         const binormal = sample.binormal;
         const normal = sample.normal;
 
         const base = pt.clone().add(binormal.clone().multiplyScalar(sideOffset));
-        const topY = base.clone().add(normal.clone().multiplyScalar(0.82));
+        const topY = base.clone().add(normal.clone().multiplyScalar(0.85));
         const botY = base.clone().add(normal.clone().multiplyScalar(0.38));
 
-        // Add 2 vertices for rail ribbon
         railVertices.push(topY.x, topY.y, topY.z);
         railVertices.push(botY.x, botY.y, botY.z);
 
-        // Color: alternating red & white on curves / chevrons, galvanized silver on straights
-        const isSharpTurn = Math.abs(sample.bankingRad) > 0.035;
+        // Color: alternating red & white on curves, galvanized silver on straights
+        const isSharpTurn = Math.abs(sample.bankingRad) > 0.018;
         const isStripeRed = Math.floor(i / 2) % 2 === 0;
 
-        let r = 0.75, g = 0.78, b = 0.80; // Galvanized silver
+        let r = 0.72, g = 0.75, b = 0.78; // Galvanized silver
         if (isSharpTurn) {
           if (isStripeRed) {
-            r = 0.88; g = 0.08; b = 0.12; // Rally red
+            r = 0.88; g = 0.12; b = 0.14; // Reflective red
           } else {
-            r = 0.98; g = 0.98; b = 0.98; // High-vis white
+            r = 0.98; g = 0.98; b = 0.98; // Reflective white
           }
         }
 
@@ -419,16 +498,16 @@ export class RallyStageWorld {
         vertOffset += 2;
 
         if (prevValidIdx !== -1) {
-          // Connect previous 2 vertices to current 2 vertices (2 triangles each direction for double-sided collision)
           railIndices.push(prevValidIdx, curVert, prevValidIdx + 1);
           railIndices.push(prevValidIdx + 1, curVert, curVert + 1);
+          // Double-sided faces
           railIndices.push(prevValidIdx, prevValidIdx + 1, curVert);
           railIndices.push(prevValidIdx + 1, curVert + 1, curVert);
         }
         prevValidIdx = curVert;
 
-        // Add post every 2 samples (~5.3m)
-        if (i % 2 === 0) {
+        // Add post every 2 samples (~6.6m)
+        if (i % 2 === 0 && i < this.numSamples) {
           const post = new THREE.Mesh(postGeom, postMat);
           post.position.set(base.x, base.y + 0.45, base.z);
           post.castShadow = true;
@@ -446,9 +525,9 @@ export class RallyStageWorld {
     const railMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
       metalness: 0.75,
-      roughness: 0.25,
+      roughness: 0.28,
       flatShading: true,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
     });
 
     const railMesh = new THREE.Mesh(railGeom, railMat);
@@ -463,18 +542,18 @@ export class RallyStageWorld {
     const railColDesc = rapier.ColliderDesc.trimesh(
       new Float32Array(railVertices),
       new Uint32Array(railIndices)
-    ).setFriction(0.2).setRestitution(0.15);
+    ).setFriction(0.15).setRestitution(0.20);
     const railCollider = this.physics.world.createCollider(railColDesc, railBody);
     this.physicsColliders.push(railCollider);
   }
 
   /**
-   * Instanced Forest: Faceted pines and broadleaf canopies (two low-poly tree types)
+   * Instanced Forest: Neatly clustered faceted pines and broadleaf canopies outside track margins
    */
   private createInstancedForest(): void {
-    const totalTrees = 800;
-    const numPines = 480;
-    const numBroad = 320;
+    const totalTrees = 360;
+    const numPines = 220;
+    const numBroad = 140;
 
     // 1. Faceted Pine Tree Geometry (stacked faceted cones + trunk)
     const pineTrunkGeom = new THREE.CylinderGeometry(0.32, 0.52, 3.2, 5);
@@ -486,7 +565,6 @@ export class RallyStageWorld {
     const pineFrondGeom3 = new THREE.ConeGeometry(1.4, 2.2, 6);
     pineFrondGeom3.translate(0, 6.6, 0);
 
-    // Merge pine foliage
     const pineLeavesGeom = this.mergeGeometries([pineFrondGeom1, pineFrondGeom2, pineFrondGeom3]);
 
     const trunkMat = new THREE.MeshStandardMaterial({
@@ -532,40 +610,40 @@ export class RallyStageWorld {
     broadFoliageMesh.castShadow = true;
     broadFoliageMesh.receiveShadow = true;
 
-    // Distribute trees naturally along the track margin (12m to 140m from track center)
+    // Distribute trees safely outside the track margins (14m to 65m from track center)
     const dummy = new THREE.Object3D();
     let pineIdx = 0;
     let broadIdx = 0;
 
     for (let t = 0; t < totalTrees; t++) {
-      const u = (t * 0.00125 + Math.sin(t * 1.7) * 0.003) % 1.0;
+      const u = (t * (1.0 / totalTrees) + Math.sin(t * 1.6) * 0.005) % 1.0;
       const pt = this.spline.getPointAt(u);
       const tang = this.spline.getTangentAt(u).normalize();
       const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
-      // Side & distance
       const side = (t % 2 === 0 ? 1 : -1);
-      const distFromRoad = 8.5 + (t % 11) * 3.5 + Math.random() * 25.0;
+      // Ensure trees are at least 14m away from centerline (well behind the 5.5m guardrails)
+      const distFromRoad = 14.0 + (t % 9) * 4.0 + ((t * 7) % 13) * 1.8;
       const x = pt.x + binormal.x * (side * distFromRoad);
       const z = pt.z + binormal.z * (side * distFromRoad);
-      const y = this.getTerrainElevation(x, z);
+      const y = 0.0; // Anchored at ground Y=0
 
-      const scale = 0.8 + (t % 5) * 0.12 + Math.random() * 0.2;
-      dummy.position.set(x, y - 0.2, z);
+      const scale = 0.85 + (t % 5) * 0.12;
+      dummy.position.set(x, y, z);
       dummy.scale.set(scale, scale, scale);
-      dummy.rotation.y = t * 0.67;
+      dummy.rotation.y = t * 0.73;
       dummy.updateMatrix();
 
-      const isPine = (t % 5 !== 0) && pineIdx < numPines;
+      const isPine = (t % 4 !== 0) && pineIdx < numPines;
       if (isPine) {
         pineTrunkMesh.setMatrixAt(pineIdx, dummy.matrix);
         pineFoliageMesh.setMatrixAt(pineIdx, dummy.matrix);
-        this.trunkObstacles.push({ x, z, r: 0.5 * scale });
+        this.trunkObstacles.push({ x, z, r: 0.6 * scale });
         pineIdx++;
       } else if (broadIdx < numBroad) {
         broadTrunkMesh.setMatrixAt(broadIdx, dummy.matrix);
         broadFoliageMesh.setMatrixAt(broadIdx, dummy.matrix);
-        this.trunkObstacles.push({ x, z, r: 0.7 * scale });
+        this.trunkObstacles.push({ x, z, r: 0.8 * scale });
         broadIdx++;
       }
     }
@@ -582,199 +660,95 @@ export class RallyStageWorld {
   }
 
   /**
-   * Roadside Props: Yellow chevrons, teal marker signs, fences, small spectators
+   * Roadside Props: Brake distance boards ("150", "100", "50") and corner warning chevrons
    */
   private createRoadsideProps(): void {
-    // 1. Yellow Chevrons at sharp turns
-    const chevronTurns = [0.08, 0.15, 0.35, 0.42, 0.58, 0.72, 0.88];
-    const chevronGroup = new THREE.Group();
+    const propsGroup = new THREE.Group();
 
-    chevronTurns.forEach((u, idx) => {
-      const pt = this.spline.getPointAt(u);
-      const tang = this.spline.getTangentAt(u).normalize();
-      const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
+    // 1. High-vis Direction Chevrons at Sharp Turns
+    const chevronTurns = [0.08, 0.15, 0.32, 0.42, 0.62, 0.74, 0.88];
+    const chevronMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(STAGE_PALETTE.CHEVRON_YELLOW),
+      roughness: 0.4,
+      flatShading: true,
+    });
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.8 });
 
-      // Outside of turn
+    chevronTurns.forEach((u) => {
       for (let c = -1; c <= 1; c++) {
-        const uSub = (u + c * 0.004) % 1.0;
+        const uSub = (u + c * 0.005 + 1.0) % 1.0;
         const subPt = this.spline.getPointAt(uSub);
         const subTang = this.spline.getTangentAt(uSub).normalize();
         const subBinormal = new THREE.Vector3().crossVectors(subTang, new THREE.Vector3(0, 1, 0)).normalize();
 
-        const boardX = subPt.x + subBinormal.x * 5.8;
-        const boardY = subPt.y + 1.2;
-        const boardZ = subPt.z + subBinormal.z * 5.8;
+        const boardX = subPt.x + subBinormal.x * 6.5;
+        const boardY = 1.1;
+        const boardZ = subPt.z + subBinormal.z * 6.5;
 
-        const postGeom = new THREE.CylinderGeometry(0.06, 0.06, 1.6, 5);
-        const postMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.8 });
-        const post = new THREE.Mesh(postGeom, postMat);
+        // Post
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5), postMat);
         post.position.set(boardX, boardY - 0.4, boardZ);
         post.castShadow = true;
-        chevronGroup.add(post);
+        propsGroup.add(post);
 
-        const boardGeom = new THREE.BoxGeometry(1.2, 0.75, 0.06);
-        const boardMat = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(STAGE_PALETTE.CHEVRON_YELLOW),
-          roughness: 0.4,
-          flatShading: true
-        });
-        const board = new THREE.Mesh(boardGeom, boardMat);
-        board.position.set(boardX, boardY + 0.3, boardZ);
+        // Board
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.7, 0.06), chevronMat);
+        board.position.set(boardX, boardY + 0.25, boardZ);
         board.rotation.y = Math.atan2(subTang.x, subTang.z) + Math.PI / 2;
         board.castShadow = true;
-        chevronGroup.add(board);
+        propsGroup.add(board);
 
-        // Black chevron arrow shape on face
-        const arrowGeom = new THREE.ConeGeometry(0.24, 0.48, 3);
-        arrowGeom.rotateZ(Math.PI / 2);
-        const arrowMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-        const arrow = new THREE.Mesh(arrowGeom, arrowMat);
-        arrow.position.set(boardX, boardY + 0.3, boardZ + 0.04);
+        // Chevron arrow
+        const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.42, 3), arrowMat);
+        arrow.rotateZ(Math.PI / 2);
+        arrow.position.set(boardX, boardY + 0.25, boardZ + 0.04);
         arrow.rotation.y = board.rotation.y;
-        chevronGroup.add(arrow);
+        propsGroup.add(arrow);
       }
     });
-    this.group.add(chevronGroup);
 
-    // 2. Teal Marker Signs (Rally Distance / Stage markers)
-    const markerDistances = [100, 300, 600, 900, 1200, 1500];
-    const markerGroup = new THREE.Group();
+    // 2. Brake Distance Boards ("150", "100", "50" meter markers before Turn 1 & Carousel)
+    const brakeZones = [
+      { uApex: 0.08, dists: [150, 100, 50] },
+      { uApex: 0.38, dists: [150, 100, 50] },
+      { uApex: 0.72, dists: [150, 100, 50] },
+    ];
 
-    markerDistances.forEach((dist) => {
-      const u = dist / this.totalLength;
-      const pt = this.spline.getPointAt(u);
-      const tang = this.spline.getTangentAt(u).normalize();
-      const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
-
-      const mx = pt.x - binormal.x * 5.2;
-      const my = pt.y + 0.9;
-      const mz = pt.z - binormal.z * 5.2;
-
-      // Timber post
-      const mPostGeom = new THREE.CylinderGeometry(0.08, 0.08, 1.5, 5);
-      const mPostMat = new THREE.MeshStandardMaterial({ color: 0x4a4038, roughness: 0.9 });
-      const mPost = new THREE.Mesh(mPostGeom, mPostMat);
-      mPost.position.set(mx, my - 0.2, mz);
-      mPost.castShadow = true;
-      markerGroup.add(mPost);
-
-      // Teal placard
-      const placardGeom = new THREE.BoxGeometry(0.7, 0.9, 0.06);
-      const placardMat = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(STAGE_PALETTE.TEAL_MARKER),
-        roughness: 0.5,
-        flatShading: true,
-      });
-      const placard = new THREE.Mesh(placardGeom, placardMat);
-      placard.position.set(mx, my + 0.35, mz);
-      placard.rotation.y = Math.atan2(tang.x, tang.z) - Math.PI / 2;
-      placard.castShadow = true;
-      markerGroup.add(placard);
+    const markerBoardMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(STAGE_PALETTE.MARKER_BOARD),
+      roughness: 0.5,
+      flatShading: true,
     });
-    this.group.add(markerGroup);
 
-    // 3. Wooden Post-and-Rail Fences along Drop-offs
-    const fenceSpans = [0.22, 0.50, 0.78];
-    const fenceGroup = new THREE.Group();
-    const fWoodMat = new THREE.MeshStandardMaterial({ color: 0x5e5245, roughness: 0.9, flatShading: true });
-
-    fenceSpans.forEach((uStart) => {
-      const numPosts = 12;
-      for (let p = 0; p < numPosts; p++) {
-        const u = (uStart + p * 0.003) % 1.0;
-        const pt = this.spline.getPointAt(u);
-        const tang = this.spline.getTangentAt(u).normalize();
+    brakeZones.forEach((zone) => {
+      zone.dists.forEach((d) => {
+        const uMarker = (zone.uApex - (d / this.totalLength) + 1.0) % 1.0;
+        const pt = this.spline.getPointAt(uMarker);
+        const tang = this.spline.getTangentAt(uMarker).normalize();
         const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
-        const fx = pt.x + binormal.x * 5.2;
-        const fy = pt.y;
-        const fz = pt.z + binormal.z * 5.2;
+        const mx = pt.x - binormal.x * 6.2;
+        const mz = pt.z - binormal.z * 6.2;
 
-        const pGeom = new THREE.CylinderGeometry(0.08, 0.1, 1.2, 5);
-        const post = new THREE.Mesh(pGeom, fWoodMat);
-        post.position.set(fx, fy + 0.6, fz);
+        const post = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1.4, 5), postMat);
+        post.position.set(mx, 0.6, mz);
         post.castShadow = true;
-        fenceGroup.add(post);
+        propsGroup.add(post);
 
-        // Horizontal rails
-        if (p < numPosts - 1) {
-          const uNext = (uStart + (p + 1) * 0.003) % 1.0;
-          const ptNext = this.spline.getPointAt(uNext);
-          const tangNext = this.spline.getTangentAt(uNext).normalize();
-          const binormalNext = new THREE.Vector3().crossVectors(tangNext, new THREE.Vector3(0, 1, 0)).normalize();
-
-          const fNextX = ptNext.x + binormalNext.x * 5.2;
-          const fNextY = ptNext.y;
-          const fNextZ = ptNext.z + binormalNext.z * 5.2;
-
-          const railMid = new THREE.Vector3((fx + fNextX) * 0.5, (fy + fNextY) * 0.5 + 0.75, (fz + fNextZ) * 0.5);
-          const railLen = Math.hypot(fNextX - fx, fNextZ - fz);
-          const rGeom = new THREE.BoxGeometry(0.06, 0.12, railLen);
-          const rail = new THREE.Mesh(rGeom, fWoodMat);
-          rail.position.copy(railMid);
-          rail.lookAt(fNextX, railMid.y, fNextZ);
-          rail.castShadow = true;
-          fenceGroup.add(rail);
-        }
-      }
+        const board = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.9, 0.05), markerBoardMat);
+        board.position.set(mx, 1.15, mz);
+        board.rotation.y = Math.atan2(tang.x, tang.z) - Math.PI / 2;
+        board.castShadow = true;
+        propsGroup.add(board);
+      });
     });
-    this.group.add(fenceGroup);
 
-    // 4. Small Stylized Low-Poly Spectators
-    const spectatorGroup = new THREE.Group();
-    const spectatorSpots = [
-      { u: 0.12, side: 1, count: 6 },
-      { u: 0.36, side: -1, count: 8 },
-      { u: 0.59, side: 1, count: 7 },
-      { u: 0.75, side: -1, count: 5 },
-    ];
-
-    const bodyColors = [
-      new THREE.Color(STAGE_PALETTE.SPECTATOR_RED),
-      new THREE.Color(STAGE_PALETTE.SPECTATOR_BLUE),
-      new THREE.Color(STAGE_PALETTE.SPECTATOR_YELLOW),
-    ];
-    const headMat = new THREE.MeshStandardMaterial({ color: 0xdec1a2, flatShading: true });
-
-    spectatorSpots.forEach((spot) => {
-      const pt = this.spline.getPointAt(spot.u);
-      const tang = this.spline.getTangentAt(spot.u).normalize();
-      const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
-
-      for (let s = 0; s < spot.count; s++) {
-        const offsetDist = 7.5 + (s % 3) * 1.6 + Math.random() * 1.5;
-        const alongOffset = (s - spot.count * 0.5) * 1.4;
-
-        const sx = pt.x + binormal.x * (spot.side * offsetDist) + tang.x * alongOffset;
-        const sy = pt.y + 0.1;
-        const sz = pt.z + binormal.z * (spot.side * offsetDist) + tang.z * alongOffset;
-
-        // Torso
-        const bCol = bodyColors[s % bodyColors.length];
-        const torsoMat = new THREE.MeshStandardMaterial({ color: bCol, flatShading: true });
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.75, 0.3), torsoMat);
-        torso.position.set(sx, sy + 0.75, sz);
-        torso.castShadow = true;
-        spectatorGroup.add(torso);
-
-        // Head
-        const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.24), headMat);
-        head.position.set(sx, sy + 1.25, sz);
-        head.castShadow = true;
-        spectatorGroup.add(head);
-
-        // Cheering raised arm
-        const arm = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.5, 0.12), torsoMat);
-        arm.position.set(sx + (s % 2 === 0 ? 0.28 : -0.28), sy + 1.2, sz);
-        arm.rotation.z = s % 2 === 0 ? -0.4 : 0.4;
-        spectatorGroup.add(arm);
-      }
-    });
-    this.group.add(spectatorGroup);
+    this.group.add(propsGroup);
   }
 
   /**
-   * Procedural Low-Poly 3D Clouds
+   * Procedural Low-Poly 3D Clouds floating gently in the distance
    */
   private createClouds(): void {
     const cloudGroup = new THREE.Group();
@@ -784,29 +758,29 @@ export class RallyStageWorld {
       flatShading: true,
     });
 
-    const numClouds = 24;
+    const numClouds = 20;
     for (let c = 0; c < numClouds; c++) {
       const singleCloud = new THREE.Group();
       const numPuffs = 4 + (c % 4);
 
       for (let p = 0; p < numPuffs; p++) {
-        const rad = 25.0 + Math.random() * 20.0;
+        const rad = 22.0 + Math.random() * 18.0;
         const puffGeom = new THREE.IcosahedronGeometry(rad, 1);
         const puff = new THREE.Mesh(puffGeom, cloudMat);
         puff.position.set(
-          (p - numPuffs * 0.5) * 22.0 + THREE.MathUtils.randFloatSpread(10),
-          THREE.MathUtils.randFloatSpread(8),
-          THREE.MathUtils.randFloatSpread(15)
+          (p - numPuffs * 0.5) * 20.0 + THREE.MathUtils.randFloatSpread(8),
+          THREE.MathUtils.randFloatSpread(6),
+          THREE.MathUtils.randFloatSpread(12)
         );
         puff.scale.set(1.0, 0.45, 0.8);
         singleCloud.add(puff);
       }
 
       const angle = (c / numClouds) * Math.PI * 2;
-      const dist = 500.0 + Math.random() * 250.0;
+      const dist = 550.0 + Math.random() * 200.0;
       singleCloud.position.set(
         Math.cos(angle) * dist,
-        140.0 + Math.random() * 60.0,
+        120.0 + Math.random() * 50.0,
         Math.sin(angle) * dist
       );
       cloudGroup.add(singleCloud);
@@ -857,11 +831,9 @@ export class RallyStageWorld {
   }
 
   /**
-   * Surface query for vehicle tyre grip: returns 'Dirt' on road or 'Grass' on verge
+   * Surface query for vehicle tyre grip: returns 'Tarmac' (1.0) on track or 'Grass' (0.48) on verge
    */
   public getSurfaceAt(x: number, z: number): { name: string; multiplier: number } {
-    // Distance from spline route
-    // Approximate with nearest precomputed sample
     let minDistSq = Infinity;
     for (let i = 0; i < this.samples.length; i += 4) {
       const s = this.samples[i];
@@ -875,8 +847,8 @@ export class RallyStageWorld {
 
     const dist = Math.sqrt(minDistSq);
     if (dist <= this.roadHalfWidth) {
-      return { name: 'Dirt', multiplier: 0.72 };
+      return { name: 'Tarmac', multiplier: 1.0 };
     }
-    return { name: 'Grass', multiplier: 0.45 };
+    return { name: 'Grass', multiplier: 0.48 };
   }
 }
