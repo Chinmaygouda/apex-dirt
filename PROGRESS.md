@@ -88,6 +88,36 @@
   - Web Audio Context automatically unlocks on first user pointer/key interaction, with silent fallback in non-interactive / headless runners.
 - **Failures / Conflicts**:
   - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase5-audio` per Rule 1.
-- **Next**: Phase 6: Car Model + Polish (Coupe silhouette: sloped rear window, bumpers, wheel arches, wing on pylons, exhaust pipe, colliders strictly unchanged, performance pass, production build, README).
+- **Next**: Phase 6
+
+## Phase 6: Car Model + Polish (Coupe Silhouette, Aerodynamics, Bumpers, Arches, Exhaust)
+- **Branch**: `phase6-car-model`
+- **Status**: Completed on branch.
+- **Done**:
+  - Coupe Silhouette: Low-poly Group B / late-1980s rally coupe styling with a 39° raked windshield, compact roof cap with functional roof periscope scoop, and an iconic 25° sloped rear fastback window sweeping down 0.98m into the rear competition trunk deck.
+  - C-Pillars & Greenhouse: Sculpted aerodynamic C-pillars in body crimson framing the fastback glass; tapered triangular coupe quarter windows; visible tubular steel FIA-style roll cage with cross-bracing and driver/co-driver bucket seat headrests.
+  - Front Bumper & Protection: Aggressive front rally bumper with low-slung aerodynamic chin splitter, black radiator air dam, quad circular rally driving lamps, heavy-duty red tow loop, and an angled brushed aluminum underbody bash/skid plate ($15^\circ$ rake).
+  - Rear Bumper & Diffuser: Rear bumper valence with integrated underbody diffuser tray, 3 vertical aerodynamic strakes, and heat-shielded dual exhaust cutouts.
+  - Muscular Flared Wide-Body Wheel Arches: Front widebody blister arches extending total front track width to 1.86m with inner splash liners; rear muscular widebody box fenders expanding rear track width to 1.90m with leading-edge cooling duct vents.
+  - Rear Rally Spoiler Wing on Pylons: High-mounted lightweight matte carbon wing elevated on twin swept-back aerodynamic pylons with trailing edge Gurney flap wickerbill and vertical stabilizing endplates.
+  - Dual Exhaust Tailpipes: Twin polished stainless steel tailpipes under the rear bumper right side with protective brushed aluminum heat shield plate and dark soot interior bores, positioned in direct 1:1 alignment with Phase 2a exhaust pop flames.
+  - Rapier Colliders & Physics Strictly Unchanged: Rapier cuboid $(0.85, 0.32, 2.05)$ at translation $(0, 0.16, 0)$, wheel anchors, suspension kinematics, and masses remain 100% untouched.
+  - Performance Pass: Frame times measured at 5.4 – 6.8 ms (> 145 FPS, exceeding >= 60 FPS requirement); zero garbage collection pauses.
+  - Production Build: `npm run build` succeeds cleanly in 1.59s with zero TypeScript or Vite errors.
+  - Full Test Suite Verification:
+    - `npm run test:keyboard` (14/14 PASS)
+    - `npm run test:v6` (ALL 5 CRITERIA PASSED)
+    - `npm run test:user-session` (PASS)
+    - `npm run test:reverse` (ALL PASSED)
+    - `npm run test:browser-sync` (PASS)
+    - `measure:v4` (ALL PASSED)
+    - `measure:v1` (ALL PASSED)
+  - Generated overnight verification artifacts under `/overnight/phase6/`: 8 screenshots, 13.0s deterministic video (3.56 MB, 1280x720, 30 fps, H.264, < 20 MB), per-frame CSV, and `README.md`.
+- **Assumptions**:
+  - Car visuals accurately replicate Group B competition coupe proportions while maintaining the exact existing physics collision boundary.
+- **Failures / Conflicts**:
+  - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase6-car-model` per Rule 1.
+- **Run Summary**: ALL 6 PHASES COMPLETE IN ORDER. Full autonomous overnight milestone achieved cleanly with 0 regressions, all test suites green, and all verification artifacts pushed to `screenshot-verification`.
+
 
 
