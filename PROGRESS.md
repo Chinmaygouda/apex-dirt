@@ -68,5 +68,26 @@
   - 80m lookahead along Catmull-Rom spline provides optimal advance warning for driver pace notes across 60–120 mph speeds.
 - **Failures / Conflicts**:
   - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase4-gameplay` per Rule 1.
-- **Next**: Phase 5: Audio (Web Audio procedural synthesis: engine harmonic ladder, shift pitch dip, throttle brightness, exhaust pops, tyre skid noise, gravel/wind noise, brakes).
+- **Next**: Phase 5
+
+## Phase 5: Audio (Web Audio Procedural Engine, Pops, Skid, Wind/Gravel, Brakes)
+- **Branch**: `phase5-audio`
+- **Status**: Completed on branch.
+- **Done**:
+  - Engine Harmonic Ladder: 4-cylinder fundamental $f_0 = \text{RPM}/30$ (33 Hz to 240 Hz) driving 7 harmonic oscillator voices ($0.5\times, 1.0\times, 2.0\times, 3.0\times, 4.0\times, 6.0\times, 8.0\times$) reaching up to 1,920 Hz (~2 kHz).
+  - Shift Pitch Dip: Exponential $-25\%$ frequency drop over 60ms during `isShifting`, smoothly recovering as clutch engages.
+  - Throttle-Dependent Brightness: Dynamic 2nd-order lowpass filter ($Q=2.2$) sweeping from 480 Hz (idle/coast) to 2,800+ Hz (WOT) with volume scaling (0.25 to 0.70).
+  - Exhaust Pops Synced to Phase 2a: Triggered by `VehicleEffects.onExhaustPop` with transient gunshot click + sub-bass pressure thump + crackle cluster.
+  - Tyre Skid Noise: Bandpass filtered noise (650–1,250 Hz) modulated by lateral slip angle ($>3.0^\circ$) and sliding velocity.
+  - Wind & Gravel Spray: Continuous aerodynamic wind noise scaled quadratically $(v/130)^{1.8}$ + high-frequency aggregate gravel rattle modulated by surface grip.
+  - Brake & Handbrake Sounds: High-Q metallic rotor friction (3.2 kHz) and dual-tooth handbrake ratchet click + rear drag bite.
+  - Interactive HUD audio badge (`"🔊 SND"` / `"🔇 MUTE"`) and auto-unlock on user gesture.
+  - Verified suites: `npm run build` (PASS), `npm run test:keyboard` (14/14 PASS), `npm run test:v6` (ALL 5 CRITERIA PASSED), `npm run test:user-session` (PASS), `npm run test:reverse` (ALL PASSED), `npm run test:browser-sync` (PASS), `measure:v4` (ALL PASSED), `measure:v1` (ALL PASSED).
+  - Generated overnight verification artifacts under `/overnight/phase5/`: 8 screenshots, 13.0s deterministic video (3.41 MB, 1280x720, 30 fps, H.264, < 20 MB), per-frame CSV, and `README.md`.
+- **Assumptions**:
+  - Web Audio Context automatically unlocks on first user pointer/key interaction, with silent fallback in non-interactive / headless runners.
+- **Failures / Conflicts**:
+  - Same mathematical Window 3b replay conflict as Phase 1 (isolated scrub at 95 mph expects 0.8G decel from steer alone). Left on `phase5-audio` per Rule 1.
+- **Next**: Phase 6: Car Model + Polish (Coupe silhouette: sloped rear window, bumpers, wheel arches, wing on pylons, exhaust pipe, colliders strictly unchanged, performance pass, production build, README).
+
 
