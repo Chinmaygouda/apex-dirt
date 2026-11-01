@@ -262,125 +262,159 @@ export class DeterministicVideoRecorder {
   }
 
   // -------------------------------------------------------------
-  // CLIP B: 10s Keyboard-Style Low-Speed Drift (steer only -1/0/+1, full throttle)
   // -------------------------------------------------------------
-  public async renderClipB(): Promise<any> {
-    console.log('[VideoRecorder] Starting Clip B: 10s Keyboard Drift (steer only -1/0/+1)...');
-    const clipId = 'clip_b';
-    const outputName = 'clip_b_keyboard_drift';
-    const totalFrames = 300; // 10.0s @ 30 fps
+  // CLIP B / KEYBOARD FEEL CLIP: Open-loop raw taps (60, 80, 100 mph + S-turn)
+  // No feedback controller: steer strictly digital key inputs -1, 0, +1
+  // -------------------------------------------------------------
+  public async renderClipKeyboardFeel(): Promise<any> {
+    console.log('[VideoRecorder] Starting Keyboard Feel Demo Clip (raw taps at 60, 80, 100 mph + S-turn)...');
+    const clipId = 'clip_keyboard_feel';
+    const outputName = 'keyboard_feel_demo';
 
     this.renderer.setSize(1280, 720, false);
     this.camera.camera.aspect = 1280 / 720;
     this.camera.camera.updateProjectionMatrix();
 
     this.vehicle.tuning.surfaceMode = 'dirt';
-    this.vehicle.resetPosition();
-    const initSpeedMs = 28.0 * 0.44704;
-    this.vehicle.chassisBody.setLinvel({ x: 0, y: 0, z: initSpeedMs }, true);
-    (this.vehicle as any).currentGear = 2;
-    const omega = initSpeedMs / this.vehicle.wheelRadius;
-    for (let i = 0; i < 4; i++) (this.vehicle as any).wheelAngularVel[i] = omega;
 
-    for (let i = 0; i < 15; i++) {
-      this.physics.step(1 / 120, (dt) => {
-        this.vehicle.updatePhysicsSubstep(dt, {
-          throttle: 1.0, brake: 0, steer: 0, handbrake: false,
-          reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false
-        });
-      });
-    }
-    this.vehicle.chassisBody.setLinvel({ x: 0, y: 0, z: initSpeedMs }, true);
-    for (let i = 0; i < 4; i++) (this.vehicle as any).wheelAngularVel[i] = omega;
-    this.camera.update(this.vehicle, 0.05);
+    const segments = [
+      {
+        name: '60 MPH TAP (0.3s)',
+        initMph: 60,
+        durationS: 3.0,
+        steerFn: (t: number) => (t >= 0.5 && t < 0.8) ? 1 : 0
+      },
+      {
+        name: '80 MPH TAP (0.3s)',
+        initMph: 80,
+        durationS: 3.0,
+        steerFn: (t: number) => (t >= 0.5 && t < 0.8) ? -1 : 0
+      },
+      {
+        name: '100 MPH TAP (0.3s)',
+        initMph: 100,
+        durationS: 3.0,
+        steerFn: (t: number) => (t >= 0.5 && t < 0.8) ? 1 : 0
+      },
+      {
+        name: 'S-TURN (LEFT-RIGHT)',
+        initMph: 75,
+        durationS: 4.0,
+        steerFn: (t: number) => (t >= 0.5 && t < 0.85) ? -1 : (t >= 0.85 && t < 1.20) ? 1 : 0
+      }
+    ];
 
+    const dt = 1 / 30;
     const telemetryRows: VideoTelemetryFrame[] = [];
+    let globalFrame = 0;
+    let globalTime = 0;
 
-    for (let f = 0; f < totalFrames; f++) {
-      const t = f * (1 / 30);
+    for (const seg of segments) {
+      this.vehicle.resetPosition();
+      const startZ = seg.durationS > 3.0 ? -150 : -100;
+      this.vehicle.chassisBody.setTranslation({ x: 0, y: 0.6593, z: startZ }, true);
+      const ms = seg.initMph * 0.44704;
+      this.vehicle.chassisBody.setLinvel({ x: 0, y: 0, z: ms }, true);
+      const gear = seg.initMph > 113 ? 5 : seg.initMph > 100 ? 4 : seg.initMph > 60 ? 3 : 2;
+      (this.vehicle as any).currentGear = gear;
+      (this.vehicle as any).isShifting = false;
+      (this.vehicle as any).shiftTimer = 0;
+      const omega = ms / this.vehicle.wheelRadius;
+      for (let i = 0; i < 4; i++) (this.vehicle as any).wheelAngularVel[i] = omega;
 
-      // Keyboard steer inputs strictly -1, 0, or +1:
-      let steer: -1 | 0 | 1 = 1;
-      const currentSlip = Math.abs(this.vehicle.driftAngleDeg);
-      if (t < 0.8) {
-        steer = 1;
-      } else {
-        const cycle = Math.floor(t * 4) % 3;
-        if (currentSlip > 24.0) {
-          steer = cycle === 0 ? -1 : 0;
-        } else if (currentSlip < 15.0) {
-          steer = 1;
-        } else {
-          steer = cycle === 1 ? 1 : 0;
+      for (let i = 0; i < 15; i++) {
+        this.physics.step(1 / 120, (d) => {
+          this.vehicle.updatePhysicsSubstep(d, {
+            throttle: 1.0, brake: 0, steer: 0, handbrake: false,
+            reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false
+          });
+        });
+      }
+      this.vehicle.chassisBody.setTranslation({ x: 0, y: 0.6593, z: startZ }, true);
+      this.vehicle.chassisBody.setLinvel({ x: 0, y: 0, z: ms }, true);
+      (this.vehicle as any).currentGear = gear;
+      (this.vehicle as any).isShifting = false;
+      (this.vehicle as any).shiftTimer = 0;
+      for (let i = 0; i < 4; i++) (this.vehicle as any).wheelAngularVel[i] = omega;
+      this.camera.update(this.vehicle, 0.05);
+
+      const framesInSeg = Math.round(seg.durationS / dt);
+
+      for (let f = 0; f < framesInSeg; f++) {
+        const tRel = f * dt;
+        const steer = seg.steerFn(tRel);
+        const inputs = {
+          throttle: 1.0,
+          brake: 0,
+          steer,
+          handbrake: false,
+          reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false
+        };
+
+        this.physics.step(dt, (subDt) => this.vehicle.updatePhysicsSubstep(subDt, inputs));
+
+        this.vehicle.updateVisuals(inputs, dt);
+        this.camera.update(this.vehicle, dt);
+
+        if (this.vehicle.chassisMesh) {
+          const carPos = this.vehicle.chassisMesh.position;
+          this.sunLight.position.set(carPos.x + 40, carPos.y + 60, carPos.z - 30);
+          this.sunLight.target.position.copy(carPos);
         }
-      }
 
-      const inputs = {
-        throttle: 1.0, // full throttle continuous
-        brake: 0.0,
-        steer,
-        handbrake: false,
-        reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false
-      };
+        this.renderer.render(this.scene, this.camera.camera);
 
-      for (let s = 0; s < 4; s++) {
-        this.physics.step(1 / 120, (subDt) => this.vehicle.updatePhysicsSubstep(subDt, inputs));
-      }
+        const euler = new THREE.Euler().setFromQuaternion(this.vehicle.chassisMesh.quaternion, 'YXZ');
+        const rollDeg = THREE.MathUtils.radToDeg(euler.z);
+        const pitchDeg = this.vehicle.getVisualPitchDeg ? this.vehicle.getVisualPitchDeg() : THREE.MathUtils.radToDeg(euler.x);
+        const droopCm = Math.max(this.vehicle.lastVisualDroop[2] || 0, this.vehicle.lastVisualDroop[3] || 0) * 100;
+        const telem = this.vehicle.getTelemetry(inputs);
 
-      this.vehicle.updateVisuals(inputs, 1 / 30);
-      this.camera.update(this.vehicle, 1 / 30);
+        const frameTelem: VideoTelemetryFrame = {
+          time_s: parseFloat(globalTime.toFixed(3)),
+          speed_mph: parseFloat(telem.speedMph.toFixed(1)),
+          gear: telem.gear,
+          steer,
+          throttle: 1.0,
+          brake: 0.0,
+          handbrake: false,
+          slip_angle_deg: parseFloat(this.vehicle.driftAngleDeg.toFixed(1)),
+          roll_deg: parseFloat(rollDeg.toFixed(1)),
+          pitch_deg: parseFloat(pitchDeg.toFixed(1)),
+          droop_cm: parseFloat(droopCm.toFixed(1)),
+        };
+        telemetryRows.push(frameTelem);
 
-      if (this.vehicle.chassisMesh) {
-        const carPos = this.vehicle.chassisMesh.position;
-        this.sunLight.position.set(carPos.x + 40, carPos.y + 60, carPos.z - 30);
-        this.sunLight.target.position.copy(carPos);
-      }
+        this.compCtx.drawImage(this.renderer.domElement, 0, 0, 1280, 720);
+        this.drawOverlay(this.compCtx, frameTelem, `Keyboard Feel: ${seg.name}`);
 
-      this.renderer.render(this.scene, this.camera.camera);
+        const dataUrl = this.compCanvas.toDataURL('image/png');
+        await fetch('/api/save-video-frame', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ clipId, frameIndex: globalFrame, dataUrl })
+        });
 
-      const euler = new THREE.Euler().setFromQuaternion(this.vehicle.chassisMesh.quaternion, 'YXZ');
-      const rollDeg = THREE.MathUtils.radToDeg(euler.z);
-      const pitchDeg = this.vehicle.getVisualPitchDeg ? this.vehicle.getVisualPitchDeg() : THREE.MathUtils.radToDeg(euler.x);
-      const droopCm = Math.max(this.vehicle.lastVisualDroop[2] || 0, this.vehicle.lastVisualDroop[3] || 0) * 100;
-      const telem = this.vehicle.getTelemetry(inputs);
+        if (globalFrame % 30 === 0) {
+          console.log(`[Keyboard Feel] Frame ${globalFrame}/${390} (t=${globalTime.toFixed(2)}s) rendered.`);
+        }
 
-      const frameTelem: VideoTelemetryFrame = {
-        time_s: parseFloat(t.toFixed(3)),
-        speed_mph: parseFloat(telem.speedMph.toFixed(1)),
-        gear: telem.gear,
-        steer: steer,
-        throttle: 1.0,
-        brake: 0.0,
-        handbrake: false,
-        slip_angle_deg: parseFloat(this.vehicle.driftAngleDeg.toFixed(1)),
-        roll_deg: parseFloat(rollDeg.toFixed(1)),
-        pitch_deg: parseFloat(pitchDeg.toFixed(1)),
-        droop_cm: parseFloat(droopCm.toFixed(1)),
-      };
-      telemetryRows.push(frameTelem);
-
-      this.compCtx.drawImage(this.renderer.domElement, 0, 0, 1280, 720);
-      this.drawOverlay(this.compCtx, frameTelem, 'Keyboard Drift (Steer -1/0/+1)');
-
-      const dataUrl = this.compCanvas.toDataURL('image/png');
-      await fetch('/api/save-video-frame', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clipId, frameIndex: f, dataUrl })
-      });
-
-      if (f % 30 === 0 || f === totalFrames - 1) {
-        console.log(`[Clip B] Frame ${f}/${totalFrames} (t=${t.toFixed(2)}s) rendered & saved.`);
+        globalFrame++;
+        globalTime += dt;
       }
     }
 
-    console.log('[VideoRecorder] Finishing Clip B encoding...');
+    console.log('[VideoRecorder] Finishing Keyboard Feel Demo encoding...');
     const finishResp = await fetch('/api/finish-video-clip', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clipId, outputName, telemetryRows })
     });
     return await finishResp.json();
+  }
+
+  public async renderClipB(): Promise<any> {
+    return await this.renderClipKeyboardFeel();
   }
 
   // -------------------------------------------------------------

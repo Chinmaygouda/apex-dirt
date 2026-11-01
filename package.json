@@ -13,7 +13,8 @@
     "test:browser-sync": "tsx test_browser_vs_headless.ts",
     "test:v6": "tsx test_v6_integration.ts",
     "measure:v4": "tsx measure_v4.ts",
-    "measure:v1": "tsx measure_v1.ts"
+    "measure:v1": "tsx measure_v1.ts",
+    "test:keyboard": "tsx keyboard_feel_test.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",

@@ -7,6 +7,7 @@ screenshots/
 *.mp4
 *.mov
 !v8/videos/*.mp4
+!v9/videos/*.mp4
 temp_video_frames/
 
 # Reference footage and composite frames (strictly do not commit any reference material)

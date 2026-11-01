@@ -3,8 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(process.cwd(), 'v8');
-const VIDEOS_DIR = path.resolve(process.cwd(), 'v8', 'videos');
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(process.cwd(), 'v9');
+const VIDEOS_DIR = process.env.VIDEOS_DIR || path.resolve(process.cwd(), 'v9', 'videos');
 const TEMP_FRAMES_DIR = path.resolve(process.cwd(), 'temp_video_frames');
 
 export default defineConfig({
@@ -121,6 +121,13 @@ export default defineConfig({
                 const stats = fs.statSync(mp4Path);
                 const sizeMb = stats.size / (1024 * 1024);
                 console.log(`[Video Saver] Encoded ${outputName}.mp4 -> ${sizeMb.toFixed(2)} MB`);
+
+                if (outputName === 'keyboard_feel_demo') {
+                  fs.copyFileSync(csvPath, path.join(VIDEOS_DIR, 'clip_keyboard_feel.csv'));
+                  fs.copyFileSync(mp4Path, path.join(VIDEOS_DIR, 'clip_keyboard_feel.mp4'));
+                  fs.copyFileSync(csvPath, path.join(VIDEOS_DIR, 'clip_b_keyboard_drift.csv'));
+                  fs.copyFileSync(mp4Path, path.join(VIDEOS_DIR, 'clip_b_keyboard_drift.mp4'));
+                }
 
                 // Clean up temp PNG frames
                 fs.rmSync(clipDir, { recursive: true, force: true });
