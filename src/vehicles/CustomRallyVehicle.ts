@@ -1198,8 +1198,9 @@ export class CustomRallyVehicle {
       const visualDroop = currentDroop + (targetWheelDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       this.lastVisualDroop[i] = visualDroop;
       const effectiveSuspLen = suspLen + visualDroop;
-
-      const localWheelPos = new THREE.Vector3(localAnchor.x, localAnchor.y - effectiveSuspLen, localAnchor.z);
+      const isRear = i >= 2;
+      const trackOffset = isRear ? (localAnchor.x < 0 ? -0.025 : 0.025) : 0;
+      const localWheelPos = new THREE.Vector3(localAnchor.x + trackOffset, localAnchor.y - effectiveSuspLen, localAnchor.z);
       localWheelPos.applyQuaternion(chassisQuat);
       wheelMesh.position.copy(chassisPos).add(localWheelPos);
 
@@ -1284,32 +1285,44 @@ export class CustomRallyVehicle {
   private createChassisVisuals(): void {
     const carGroup = new THREE.Group();
 
-    // Materials using verified sampled palette
+    // =========================================================================
+    // COLOR PALETTE & PBR MATERIALS
+    // =========================================================================
     const bodyMat = new THREE.MeshStandardMaterial({
-      color: THREE_PALETTE.carBodyLit,
+      color: THREE_PALETTE.carBodyLit, // Crimson Red (#BC0F28)
+      roughness: 0.32,
+      metalness: 0.12,
+      flatShading: true,
+    });
+
+    const stripeMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc, // Alpine White racing stripes
       roughness: 0.35,
       metalness: 0.1,
       flatShading: true,
     });
 
     const trimMat = new THREE.MeshStandardMaterial({
-      color: THREE_PALETTE.carTrimBlack,
-      roughness: 0.8,
-      metalness: 0.1,
+      color: THREE_PALETTE.carTrimBlack, // Satin charcoal black (#403C50)
+      roughness: 0.85,
+      metalness: 0.15,
       flatShading: true,
     });
 
+    // Semi-translucent tinted safety glass to showcase the competition cockpit
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2634,
-      roughness: 0.1,
-      metalness: 0.6,
+      color: 0x0f172a,
+      roughness: 0.10,
+      metalness: 0.85,
+      transparent: true,
+      opacity: 0.58,
       flatShading: true,
     });
 
     this.runningLightMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carTaillightRed,
       emissive: THREE_PALETTE.carTaillightRed,
-      emissiveIntensity: 0.6,
+      emissiveIntensity: 0.65,
       flatShading: true,
     });
 
@@ -1317,7 +1330,6 @@ export class CustomRallyVehicle {
       color: 0x550000,
     });
 
-    // Glow quad behind each brake light cluster (MeshStandardMaterial with high emissive)
     this.brakeLightGlowMat = new THREE.MeshStandardMaterial({
       color: 0x550000,
       emissive: new THREE.Color(0x550000),
@@ -1327,7 +1339,6 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
-    // PointLight for brake glow – starts off
     this.brakeLightPL = new THREE.PointLight(0xff1500, 0.0, 4.5, 2.0);
     this.brakeLightPL.position.set(0, 0.28, -2.12);
     carGroup.add(this.brakeLightPL);
@@ -1335,52 +1346,114 @@ export class CustomRallyVehicle {
     const amberLightMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carTaillightAmber,
       emissive: THREE_PALETTE.carTaillightAmber,
-      emissiveIntensity: 0.4,
+      emissiveIntensity: 0.45,
       flatShading: true,
     });
 
     const whiteLightMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carTaillightWhite,
       emissive: THREE_PALETTE.carTaillightWhite,
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.35,
       flatShading: true,
     });
 
     const bashPlateMat = new THREE.MeshStandardMaterial({
-      color: 0x9ca3af,
+      color: 0x94a3b8,
       roughness: 0.35,
-      metalness: 0.8,
+      metalness: 0.85,
       flatShading: true,
     });
 
     const exhaustMat = new THREE.MeshStandardMaterial({
       color: 0xd1d5db,
+      roughness: 0.18,
+      metalness: 0.92,
+      flatShading: true,
+    });
+
+    const titaniumBurnMat = new THREE.MeshStandardMaterial({
+      color: 0x4f46e5, // Heat-treated blue/purple anodized tip
+      roughness: 0.15,
+      metalness: 0.95,
+      flatShading: true,
+    });
+
+    const exhaustBoreMat = new THREE.MeshBasicMaterial({
+      color: 0x0a0a0c,
+    });
+
+    const rollCageMat = new THREE.MeshStandardMaterial({
+      color: 0xd4d4d8,
+      roughness: 0.32,
+      metalness: 0.65,
+      flatShading: true,
+    });
+
+    const seatMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.95,
+      metalness: 0.05,
+      flatShading: true,
+    });
+
+    const harnessMat = new THREE.MeshStandardMaterial({
+      color: 0x2563eb, // Sabelt Racing Blue
+      roughness: 0.8,
+      metalness: 0.1,
+      flatShading: true,
+    });
+
+    const harnessBuckleMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
       roughness: 0.2,
       metalness: 0.9,
       flatShading: true,
     });
 
-    const exhaustBoreMat = new THREE.MeshBasicMaterial({
-      color: 0x111111,
+    const handbrakeMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626, // Red anodized alloy handbrake
+      roughness: 0.25,
+      metalness: 0.85,
+      flatShading: true,
     });
 
-    const rollCageMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      roughness: 0.4,
-      metalness: 0.5,
+    const intercoolerMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.28,
+      metalness: 0.88,
+      flatShading: true,
+    });
+
+    const hoseMat = new THREE.MeshStandardMaterial({
+      color: 0x0284c7, // Silicone blue intake couplers
+      roughness: 0.5,
+      metalness: 0.1,
+      flatShading: true,
+    });
+
+    const brassNozzleMat = new THREE.MeshStandardMaterial({
+      color: 0xeab308, // Brass water-spray mist nozzles
+      roughness: 0.3,
+      metalness: 0.85,
+      flatShading: true,
+    });
+
+    const mudflapMat = new THREE.MeshStandardMaterial({
+      color: 0x09090b,
+      roughness: 0.95,
+      metalness: 0.05,
       flatShading: true,
     });
 
     // =========================================================================
-    // 1. MAIN LOWER BODY & SCULPTED CHASSIS
+    // 1. MAIN LOWER BODY & SCULPTED CHASSIS TUB
     // =========================================================================
-    // Central cabin/engine tub
     const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.38, 3.85), bodyMat);
     lowerBody.position.set(0, 0.19, 0.02);
     lowerBody.castShadow = true;
     carGroup.add(lowerBody);
 
-    // Sculpted rocker sills (bottom aerodynamic skirts)
+    // Sculpted aerodynamic rocker sills (bottom aerodynamic skirts)
     for (const sx of [-0.85, 0.85]) {
       const sill = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 2.05), trimMat);
       sill.position.set(sx, 0.04, 0.0);
@@ -1394,20 +1467,67 @@ export class CustomRallyVehicle {
     hood.castShadow = true;
     carGroup.add(hood);
 
-    // Twin hood heat extractor louvers
-    for (const hx of [-0.36, 0.36]) {
-      const louver = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
-      louver.position.set(hx, 0.42, 1.25);
-      carGroup.add(louver);
+    // Twin Hood Racing Stripes (Alpine White)
+    for (const sx of [-0.22, 0.22]) {
+      const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 1.30), stripeMat);
+      hoodStripe.position.set(sx, 0.425, 1.28);
+      hoodStripe.rotation.x = 0.04;
+      carGroup.add(hoodStripe);
     }
 
+    // Twin hood heat extractor louvers
+    for (const hx of [-0.44, 0.44]) {
+      const louver = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.02, 0.44), trimMat);
+      louver.position.set(hx, 0.425, 1.25);
+      carGroup.add(louver);
+
+      // Louver slats
+      for (let s = -0.16; s <= 0.16; s += 0.08) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.015, 0.02), trimMat);
+        slat.position.set(hx, 0.435, 1.25 + s);
+        slat.rotation.x = 0.3;
+        carGroup.add(slat);
+      }
+    }
+
+    // Quick-Release Bonnet Cotter Pins (Chrome with red pull-ring)
+    for (const px of [-0.55, 0.55]) {
+      const pinBase = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.01, 8), bashPlateMat);
+      pinBase.position.set(px, 0.43, 1.84);
+      carGroup.add(pinBase);
+
+      const pullRing = new THREE.Mesh(
+        new THREE.TorusGeometry(0.02, 0.005, 6, 12),
+        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.8 })
+      );
+      pullRing.position.set(px, 0.44, 1.84);
+      pullRing.rotation.x = Math.PI / 2;
+      carGroup.add(pullRing);
+    }
+
+    // Under-hood visible engine details (visible through front grille/louvers)
+    const strutBrace = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.32, 8), bashPlateMat);
+    strutBrace.rotation.z = Math.PI / 2;
+    strutBrace.position.set(0, 0.32, 1.20);
+    carGroup.add(strutBrace);
+
+    const turboHousing = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.16, 12), new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.3, metalness: 0.85 }));
+    turboHousing.rotation.z = Math.PI / 2;
+    turboHousing.position.set(0.35, 0.22, 1.35);
+    carGroup.add(turboHousing);
+
+    const turboPipe = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.45, 8), hoseMat);
+    turboPipe.rotation.x = Math.PI / 2;
+    turboPipe.position.set(0.35, 0.22, 1.62);
+    carGroup.add(turboPipe);
+
     // =========================================================================
-    // 2. COUPE GREENHOUSE & SLOPED FASTBACK REAR WINDOW
+    // 2. COUPE GREENHOUSE, RACING COCKPIT & ROLL CAGE
     // =========================================================================
     // Raked front windshield
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.72), glassMat);
     windshield.position.set(0, 0.62, 0.38);
-    windshield.rotation.x = -0.68; // ~39 deg rake
+    windshield.rotation.x = -0.68;
     windshield.castShadow = true;
     carGroup.add(windshield);
 
@@ -1425,20 +1545,30 @@ export class CustomRallyVehicle {
     roof.castShadow = true;
     carGroup.add(roof);
 
-    // Roof rally air scoop / periscope
-    const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.34), trimMat);
-    roofScoop.position.set(0, 0.915, -0.05);
+    // Twin Roof Racing Stripes (Alpine White)
+    for (const sx of [-0.22, 0.22]) {
+      const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 0.95), stripeMat);
+      roofStripe.position.set(sx, 0.895, -0.25);
+      carGroup.add(roofStripe);
+    }
+
+    // Roof rally air scoop / dual cabin ventilation periscope
+    const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.38), trimMat);
+    roofScoop.position.set(0, 0.925, -0.05);
     carGroup.add(roofScoop);
 
-    // SLOPED REAR FASTBACK WINDOW (Coupe Silhouette Key Element)
-    // Long aerodynamic fastback glass sweeping down from roof to trunk deck
+    const scoopIntake = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.04), exhaustBoreMat);
+    scoopIntake.position.set(0, 0.925, 0.14);
+    carGroup.add(scoopIntake);
+
+    // Sloped aerodynamic fastback rear window
     const fastbackWindow = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.04, 0.98), glassMat);
     fastbackWindow.position.set(0, 0.67, -1.14);
-    fastbackWindow.rotation.x = 0.44; // ~25 deg fastback rake
+    fastbackWindow.rotation.x = 0.44;
     fastbackWindow.castShadow = true;
     carGroup.add(fastbackWindow);
 
-    // Sculpted C-pillar fastback flanks (left and right quarter panels)
+    // Sculpted C-pillar fastback flanks
     for (const cx of [-0.68, 0.68]) {
       const cpillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.92), bodyMat);
       cpillar.position.set(cx, 0.65, -1.12);
@@ -1458,36 +1588,153 @@ export class CustomRallyVehicle {
       carGroup.add(quarterGlass);
     }
 
-    // Rear trunk deck lid extending from base of sloped rear window to rear valence
+    // Aerodynamic A-Pillar Rally Mirrors
+    for (const mx of [-0.76, 0.76]) {
+      const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.04), trimMat);
+      mirrorStem.position.set(mx, 0.56, 0.52);
+      carGroup.add(mirrorStem);
+
+      const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.10, 0.15), bodyMat);
+      mirrorHousing.position.set(mx * 1.08, 0.58, 0.52);
+      carGroup.add(mirrorHousing);
+
+      const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.08, 0.13), bashPlateMat);
+      mirrorGlass.position.set(mx * 1.09, 0.58, 0.52);
+      mirrorGlass.rotation.y = mx > 0 ? -Math.PI / 2 : Math.PI / 2;
+      carGroup.add(mirrorGlass);
+    }
+
+    // Rear trunk deck lid extending from base of sloped rear window
     const trunkLid = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.10, 0.48), bodyMat);
     trunkLid.position.set(0, 0.45, -1.78);
     trunkLid.castShadow = true;
     carGroup.add(trunkLid);
 
-    // Visible interior: tubular roll cage structure and bucket seat headrests
-    const rollHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
-    rollHoop.position.set(0, 0.81, -0.32);
-    carGroup.add(rollHoop);
-
-    for (const rx of [-0.56, 0.56]) {
-      const rollLeg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.04), rollCageMat);
-      rollLeg.position.set(rx, 0.58, -0.32);
-      carGroup.add(rollLeg);
-
-      const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.85), rollCageMat);
-      rearStay.position.set(rx, 0.63, -0.80);
-      rearStay.rotation.x = 0.45;
-      carGroup.add(rearStay);
-    }
-
-    for (const seatX of [-0.32, 0.32]) {
-      const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.12), trimMat);
-      headrest.position.set(seatX, 0.56, -0.22);
-      carGroup.add(headrest);
+    // Twin Trunk Racing Stripes
+    for (const sx of [-0.22, 0.22]) {
+      const trunkStripe = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.008, 0.48), stripeMat);
+      trunkStripe.position.set(sx, 0.505, -1.78);
+      carGroup.add(trunkStripe);
     }
 
     // =========================================================================
-    // 3. FLARED WIDE-BODY WHEEL ARCHES (BOX FENDERS)
+    // FULL COMPETITION INTERIOR: ROLL CAGE, BUCKETS & CONTROLS
+    // =========================================================================
+    // Tubular FIA Roll Cage: Main B-pillar hoop
+    const mainHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
+    mainHoop.position.set(0, 0.81, -0.32);
+    carGroup.add(mainHoop);
+
+    for (const rx of [-0.56, 0.56]) {
+      const rollLeg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.54, 0.04), rollCageMat);
+      rollLeg.position.set(rx, 0.56, -0.32);
+      carGroup.add(rollLeg);
+
+      // Rear down-stays extending to shock towers
+      const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.88), rollCageMat);
+      rearStay.position.set(rx, 0.62, -0.80);
+      rearStay.rotation.x = 0.45;
+      carGroup.add(rearStay);
+
+      // Front A-pillar diagonal cage bars
+      const frontStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.72), rollCageMat);
+      frontStay.position.set(rx, 0.63, 0.22);
+      frontStay.rotation.x = -0.58;
+      carGroup.add(frontStay);
+
+      // Side door intrusion X-bars
+      const sideBar1 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.66), rollCageMat);
+      sideBar1.position.set(rx * 1.08, 0.44, -0.05);
+      sideBar1.rotation.x = 0.35;
+      carGroup.add(sideBar1);
+
+      const sideBar2 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 0.66), rollCageMat);
+      sideBar2.position.set(rx * 1.08, 0.44, -0.05);
+      sideBar2.rotation.x = -0.35;
+      carGroup.add(sideBar2);
+    }
+
+    // Dual Deep-Bolster Racing Bucket Seats (Driver + Co-Driver)
+    for (const seatX of [-0.34, 0.34]) {
+      // Seat cushion
+      const seatCushion = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.12, 0.44), seatMat);
+      seatCushion.position.set(seatX, 0.26, -0.16);
+      carGroup.add(seatCushion);
+
+      // Backrest
+      const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.48, 0.10), seatMat);
+      seatBack.position.set(seatX, 0.52, -0.36);
+      seatBack.rotation.x = -0.18;
+      carGroup.add(seatBack);
+
+      // Headrest with shoulder harness guides
+      const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.10), seatMat);
+      headrest.position.set(seatX, 0.74, -0.42);
+      carGroup.add(headrest);
+
+      // 5-Point Sabelt Racing Harness (Vivid Blue Webbing)
+      for (const hx of [-0.08, 0.08]) {
+        const harnessStrap = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.44, 0.015), harnessMat);
+        harnessStrap.position.set(seatX + hx, 0.54, -0.30);
+        harnessStrap.rotation.x = -0.18;
+        carGroup.add(harnessStrap);
+      }
+
+      // Central Cam-Lock Buckle
+      const buckle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 8), harnessBuckleMat);
+      buckle.rotation.x = Math.PI / 2;
+      buckle.position.set(seatX, 0.38, -0.26);
+      carGroup.add(buckle);
+    }
+
+    // Competition Dashboard & Binnacle
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.18, 0.32), trimMat);
+    dash.position.set(0, 0.48, 0.32);
+    carGroup.add(dash);
+
+    // Digital Instrument Display
+    const lcdScreen = new THREE.Mesh(
+      new THREE.BoxGeometry(0.24, 0.10, 0.02),
+      new THREE.MeshStandardMaterial({ color: 0x064e3b, emissive: 0x10b981, emissiveIntensity: 0.8, flatShading: true })
+    );
+    lcdScreen.position.set(-0.34, 0.52, 0.46);
+    carGroup.add(lcdScreen);
+
+    // 3-Spoke Deep-Dish Rally Steering Wheel
+    const wheelRim = new THREE.Mesh(
+      new THREE.TorusGeometry(0.14, 0.02, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.9 })
+    );
+    wheelRim.position.set(-0.34, 0.54, 0.15);
+    wheelRim.rotation.x = 0.35;
+    carGroup.add(wheelRim);
+
+    // Yellow 12-o'clock centering stripe
+    const centerMarker = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.022, 0.022, 0.04, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3, emissive: 0xfacc15, emissiveIntensity: 0.4 })
+    );
+    centerMarker.position.set(-0.34, 0.68, 0.11);
+    centerMarker.rotation.z = Math.PI / 2;
+    carGroup.add(centerMarker);
+
+    // Vertical Machined Alloy Hydraulic Handbrake Lever (Red Anodized)
+    const handbrakeStick = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.36, 8), handbrakeMat);
+    handbrakeStick.position.set(-0.06, 0.46, -0.06);
+    handbrakeStick.rotation.x = -0.15;
+    carGroup.add(handbrakeStick);
+
+    const handbrakeGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.12, 8), trimMat);
+    handbrakeGrip.position.set(-0.06, 0.58, -0.08);
+    carGroup.add(handbrakeGrip);
+
+    // Sequential Shift Stick
+    const shifter = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.22, 8), bashPlateMat);
+    shifter.position.set(-0.06, 0.36, 0.10);
+    carGroup.add(shifter);
+
+    // =========================================================================
+    // 3. FLARED WIDE-BODY WHEEL ARCHES (BOX BLISTER FLARES)
     // =========================================================================
     // Front flared blister arches (centered around front axle z = 1.35)
     for (const fx of [-0.88, 0.88]) {
@@ -1496,15 +1743,15 @@ export class CustomRallyVehicle {
       frontArch.castShadow = true;
       carGroup.add(frontArch);
 
-      // Inner wheel well liner
+      // Inner dark wheel well liner
       const liner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.88), trimMat);
       liner.position.set(fx * 0.94, 0.16, 1.35);
       carGroup.add(liner);
     }
 
-    // Rear muscular widebody box flares (centered around rear axle z = -1.35)
-    for (const rx of [-0.90, 0.90]) {
-      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.38, 1.18), bodyMat);
+    // Rear muscular widebody box flares (centered around rear axle z = -1.35, +50mm stagger)
+    for (const rx of [-0.92, 0.92]) {
+      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.38, 1.18), bodyMat);
       rearArch.position.set(rx, 0.21, -1.35);
       rearArch.castShadow = true;
       carGroup.add(rearArch);
@@ -1516,7 +1763,7 @@ export class CustomRallyVehicle {
     }
 
     // =========================================================================
-    // 4. FRONT RALLY BUMPER, SPLITTER & ALUMINUM BASH PLATE
+    // 4. FRONT RALLY FASCIA, INTERCOOLER WATER-SPRAY & QUAD PODS
     // =========================================================================
     // Main front bumper beam
     const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.30, 0.26), bodyMat);
@@ -1529,26 +1776,53 @@ export class CustomRallyVehicle {
     frontSplitter.position.set(0, 0.01, 2.06);
     carGroup.add(frontSplitter);
 
-    // Front center radiator intake air dam
-    const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
-    radiatorGrille.position.set(0, 0.13, 2.155);
-    carGroup.add(radiatorGrille);
+    // Wide open radiator intake air dam
+    const radiatorMouth = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.20, 0.08), exhaustBoreMat);
+    radiatorMouth.position.set(0, 0.13, 2.15);
+    carGroup.add(radiatorMouth);
+
+    // High-Performance Bar-and-Plate Intercooler Core
+    const intercoolerCore = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.18, 0.06), intercoolerMat);
+    intercoolerCore.position.set(0, 0.13, 2.16);
+    carGroup.add(intercoolerCore);
+
+    // Horizontal cooling fin slats across the intercooler face
+    for (let f = -0.07; f <= 0.07; f += 0.035) {
+      const fin = new THREE.Mesh(new THREE.BoxGeometry(1.14, 0.008, 0.02), bashPlateMat);
+      fin.position.set(0, 0.13 + f, 2.195);
+      carGroup.add(fin);
+    }
+
+    // Intercooler Water-Spray System (Twin brass spray nozzles + supply manifold)
+    const sprayManifold = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.88, 8), bashPlateMat);
+    sprayManifold.rotation.z = Math.PI / 2;
+    sprayManifold.position.set(0, 0.23, 2.18);
+    carGroup.add(sprayManifold);
+
+    for (const nx of [-0.32, 0.32]) {
+      const nozzle = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.03, 8), brassNozzleMat);
+      nozzle.rotation.x = Math.PI * 0.75;
+      nozzle.position.set(nx, 0.22, 2.20);
+      carGroup.add(nozzle);
+    }
 
     // Aluminum underbody bash / skid plate
     const bashPlate = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.04, 0.58), bashPlateMat);
     bashPlate.position.set(0, -0.06, 1.82);
-    bashPlate.rotation.x = 0.26; // Slopes up to front lip
+    bashPlate.rotation.x = 0.26;
     carGroup.add(bashPlate);
 
-    // Rally tow recovery loop
-    const towLoop = new THREE.Mesh(
-      new THREE.TorusGeometry(0.045, 0.015, 8, 16),
-      new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.6 })
-    );
-    towLoop.position.set(0.48, 0.04, 2.18);
-    carGroup.add(towLoop);
+    // Dual front recovery tow hooks
+    for (const tx of [-0.52, 0.52]) {
+      const towLoop = new THREE.Mesh(
+        new THREE.TorusGeometry(0.042, 0.014, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.6 })
+      );
+      towLoop.position.set(tx, 0.04, 2.18);
+      carGroup.add(towLoop);
+    }
 
-    // Quad front rally pod driving lamps
+    // Quad front rally pod driving lamps (Warm Tungsten Yellow Beam)
     for (let i = -1.5; i <= 1.5; i += 1.0) {
       const lampHousing = new THREE.Mesh(
         new THREE.CylinderGeometry(0.125, 0.125, 0.10, 16),
@@ -1558,22 +1832,30 @@ export class CustomRallyVehicle {
       lampHousing.position.set(i * 0.33, 0.24, 2.08);
       carGroup.add(lampHousing);
 
+      const chromeReflector = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.118, 0.10, 0.03, 16),
+        bashPlateMat
+      );
+      chromeReflector.rotateX(Math.PI / 2);
+      chromeReflector.position.set(i * 0.33, 0.24, 2.12);
+      carGroup.add(chromeReflector);
+
       const lampLens = new THREE.Mesh(
         new THREE.CylinderGeometry(0.11, 0.11, 0.02, 16),
         new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          emissive: 0xffffff,
-          emissiveIntensity: 0.65,
+          color: 0xfef08a,
+          emissive: 0xfde047,
+          emissiveIntensity: 0.75,
           flatShading: true,
         })
       );
       lampLens.rotateX(Math.PI / 2);
-      lampLens.position.set(i * 0.33, 0.24, 2.135);
+      lampLens.position.set(i * 0.33, 0.24, 2.138);
       carGroup.add(lampLens);
     }
 
     // =========================================================================
-    // 5. REAR RALLY BUMPER, DIFFUSER & DUAL EXHAUST PIPES
+    // 5. REAR FASCIA, DIFFUSER & TWIN TITANIUM EXHAUST PIPES
     // =========================================================================
     // Rear bumper beam
     const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.30, 0.26), bodyMat);
@@ -1593,64 +1875,89 @@ export class CustomRallyVehicle {
       carGroup.add(strake);
     }
 
-    // Heat shield plate above exhaust tips
-    const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.14), bashPlateMat);
-    heatShield.position.set(0.53, 0.05, -2.132);
+    // Embossed Heat Shield Plate above exhaust tips
+    const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.38, 0.16), bashPlateMat);
+    heatShield.position.set(0.53, 0.06, -2.132);
     heatShield.rotation.y = Math.PI;
     carGroup.add(heatShield);
 
-    // DUAL EXHAUST PIPES (Polished stainless steel tailpipes)
+    // DUAL EXHAUST PIPES (Twin Stainless with Titanium Heat-Scorched Burn Lip)
     for (const ex of [0.46, 0.60]) {
       const exhaustPipe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.065, 0.065, 0.24, 16),
+        new THREE.CylinderGeometry(0.062, 0.062, 0.24, 16),
         exhaustMat
       );
       exhaustPipe.rotateX(Math.PI / 2);
       exhaustPipe.position.set(ex, -0.04, -2.10);
       carGroup.add(exhaustPipe);
 
+      // Titanium Blue/Purple Heat Burn Ring on outer lip
+      const burntTip = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.064, 0.064, 0.04, 16),
+        titaniumBurnMat
+      );
+      burntTip.rotateX(Math.PI / 2);
+      burntTip.position.set(ex, -0.04, -2.21);
+      carGroup.add(burntTip);
+
       // Dark soot interior bore
       const bore = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 0.05, 16),
+        new THREE.CylinderGeometry(0.048, 0.048, 0.05, 16),
         exhaustBoreMat
       );
       bore.rotateX(Math.PI / 2);
-      bore.position.set(ex, -0.04, -2.205);
+      bore.position.set(ex, -0.04, -2.215);
       carGroup.add(bore);
+    }
+
+    // Heavy-Duty Polyurethane Mudflaps (All 4 Wheels)
+    const mudflapPositions: [number, number, number][] = [
+      [-0.86, 0.04, 0.85],  // Front Left
+      [0.86, 0.04, 0.85],   // Front Right
+      [-0.92, 0.04, -1.90], // Rear Left
+      [0.92, 0.04, -1.90],  // Rear Right
+    ];
+    for (const [mx, my, mz] of mudflapPositions) {
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.02), mudflapMat);
+      flap.position.set(mx, my, mz);
+      carGroup.add(flap);
+
+      const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.03), bashPlateMat);
+      bracket.position.set(mx, my + 0.12, mz);
+      carGroup.add(bracket);
     }
 
     // =========================================================================
     // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS
     // =========================================================================
-    // Dual aerodynamic pylons
     for (const px of [-0.56, 0.56]) {
       const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
       pylon.position.set(px, 0.62, -1.82);
-      pylon.rotation.x = 0.14; // Swept back
+      pylon.rotation.x = 0.14;
       carGroup.add(pylon);
     }
 
     // High-mounted contoured aerodynamic wing blade
-    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.05, 0.44), trimMat);
+    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.05, 0.44), trimMat);
     wingBlade.position.set(0, 0.79, -1.88);
-    wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
+    wingBlade.rotation.x = -0.04;
     wingBlade.castShadow = true;
     carGroup.add(wingBlade);
 
     // Trailing edge Gurney flap wickerbill
-    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.03, 0.02), trimMat);
+    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.03, 0.02), trimMat);
     gurneyFlap.position.set(0, 0.825, -2.09);
     carGroup.add(gurneyFlap);
 
     // Vertical aerodynamic wing endplates
-    for (const ex of [-0.88, 0.88]) {
+    for (const ex of [-0.89, 0.89]) {
       const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.48), trimMat);
       endplate.position.set(ex, 0.79, -1.88);
       carGroup.add(endplate);
     }
 
     // =========================================================================
-    // 7. TAILLIGHT CLUSTERS, GLOW QUADS & "APEX RALLY" LICENSE PLATE
+    // 7. TAILLIGHT CLUSTERS, GLOW QUADS & "APEX RALLY" NUMBER PLATE
     // =========================================================================
     // Left cluster
     const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
@@ -1690,8 +1997,9 @@ export class CustomRallyVehicle {
     glowR.rotation.y = Math.PI;
     carGroup.add(glowR);
 
-    // Custom License Plate: "APEX RALLY" + Bloom sprites
+    // High-Resolution Custom Liveries & Plates
     if (typeof document !== 'undefined') {
+      // 1. Brake Light Bloom Sprite Texture
       const bCanvas = document.createElement('canvas');
       bCanvas.width = 128;
       bCanvas.height = 128;
@@ -1732,6 +2040,7 @@ export class CustomRallyVehicle {
       this.brakeLightSpriteR.position.set(0.55, 0.30, -2.18);
       carGroup.add(this.brakeLightSpriteR);
 
+      // 2. Custom Rear Number Plate: "APEX RALLY"
       const plateCanvas = document.createElement('canvas');
       plateCanvas.width = 256;
       plateCanvas.height = 64;
@@ -1753,39 +2062,158 @@ export class CustomRallyVehicle {
       plateMesh.position.set(0, 0.18, -2.135);
       plateMesh.rotateY(Math.PI);
       carGroup.add(plateMesh);
+
+      // 3. Competition Door Number Roundels ("#07 APEX RALLY")
+      const numCanvas = document.createElement('canvas');
+      numCanvas.width = 256;
+      numCanvas.height = 256;
+      const nctx = numCanvas.getContext('2d')!;
+      nctx.fillStyle = '#ffffff';
+      nctx.beginPath();
+      nctx.arc(128, 128, 120, 0, Math.PI * 2);
+      nctx.fill();
+      nctx.strokeStyle = '#0f172a';
+      nctx.lineWidth = 10;
+      nctx.stroke();
+
+      nctx.fillStyle = '#0f172a';
+      nctx.font = 'bold 32px sans-serif';
+      nctx.textAlign = 'center';
+      nctx.fillText('APEX RALLY', 128, 62);
+
+      nctx.font = '900 110px monospace';
+      nctx.fillText('07', 128, 168);
+
+      nctx.fillStyle = '#dc2626';
+      nctx.font = 'bold 24px sans-serif';
+      nctx.fillText('GROUP B', 128, 208);
+
+      const numTex = new THREE.CanvasTexture(numCanvas);
+      const numMat = new THREE.MeshBasicMaterial({ map: numTex, transparent: true });
+
+      // Left door roundel
+      const numPlateL = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.48), numMat);
+      numPlateL.position.set(-0.852, 0.28, 0.05);
+      numPlateL.rotation.y = -Math.PI / 2;
+      carGroup.add(numPlateL);
+
+      // Right door roundel
+      const numPlateR = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.48), numMat);
+      numPlateR.position.set(0.852, 0.28, 0.05);
+      numPlateR.rotation.y = Math.PI / 2;
+      carGroup.add(numPlateR);
+
+      // 4. Windshield Sun-Strip Banner ("APEX RALLYE SPORT")
+      const visorCanvas = document.createElement('canvas');
+      visorCanvas.width = 512;
+      visorCanvas.height = 64;
+      const vctx = visorCanvas.getContext('2d')!;
+      vctx.fillStyle = '#0f172a';
+      vctx.fillRect(0, 0, 512, 64);
+      vctx.fillStyle = '#dc2626';
+      vctx.fillRect(0, 56, 512, 8);
+      vctx.fillStyle = '#ffffff';
+      vctx.font = 'bold 32px sans-serif';
+      vctx.textAlign = 'center';
+      vctx.textBaseline = 'middle';
+      vctx.fillText('★ APEX RALLYE SPORT ★', 256, 30);
+
+      const visorTex = new THREE.CanvasTexture(visorCanvas);
+      const visorMat = new THREE.MeshBasicMaterial({ map: visorTex });
+      const visorMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.30, 0.12), visorMat);
+      visorMesh.position.set(0, 0.81, 0.11);
+      visorMesh.rotation.x = -0.68;
+      carGroup.add(visorMesh);
     }
 
     this.chassisMesh.add(carGroup);
   }
 
   private createWheelVisuals(): void {
-    const tireGeom = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.28, 12);
+    // 16-Inch Group B OZ-Style White Multi-Spoke Wheels + Slotted Rotors + Red Brembo Calipers
+    const tireRadius = this.wheelRadius; // 0.35m
+    const rimRadius = tireRadius * 0.65; // ~16-inch wheel rim
+
+    // High-profile gravel tyre with rugged sidewall & tread profile
+    const tireGeom = new THREE.CylinderGeometry(tireRadius, tireRadius, 0.28, 16);
     tireGeom.rotateZ(Math.PI / 2);
 
     const tireMat = new THREE.MeshStandardMaterial({
-      color: 0x1f2022,
-      roughness: 0.9,
+      color: 0x18181b,
+      roughness: 0.92,
       metalness: 0.05,
       flatShading: true,
     });
 
-    const rimGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.62, this.wheelRadius * 0.62, 0.29, 8);
+    // White rally competition multi-spoke rim dish
+    const rimGeom = new THREE.CylinderGeometry(rimRadius, rimRadius, 0.29, 12);
     rimGeom.rotateZ(Math.PI / 2);
     const rimMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      roughness: 0.3,
-      metalness: 0.7,
+      color: 0xf8fafc, // Alpine White rally wheels
+      roughness: 0.35,
+      metalness: 0.15,
+      flatShading: true,
+    });
+
+    // Red center hub lock nut
+    const centerCapGeom = new THREE.CylinderGeometry(0.065, 0.065, 0.30, 8);
+    centerCapGeom.rotateZ(Math.PI / 2);
+    const centerCapMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      roughness: 0.25,
+      metalness: 0.8,
+      flatShading: true,
+    });
+
+    // Ventilated steel slotted brake rotor disc
+    const discGeom = new THREE.CylinderGeometry(rimRadius * 0.78, rimRadius * 0.78, 0.03, 16);
+    discGeom.rotateZ(Math.PI / 2);
+    const discMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.25,
+      metalness: 0.88,
+      flatShading: true,
+    });
+
+    // Red 4-Piston Brembo Brake Caliper
+    const caliperGeom = new THREE.BoxGeometry(0.06, 0.14, 0.16);
+    const caliperMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626,
+      roughness: 0.25,
+      metalness: 0.75,
       flatShading: true,
     });
 
     for (let i = 0; i < 4; i++) {
       const wheelGroup = new THREE.Group();
+
+      // Spinning tyre & rim assembly
       const tire = new THREE.Mesh(tireGeom, tireMat);
       tire.castShadow = true;
       wheelGroup.add(tire);
 
       const rim = new THREE.Mesh(rimGeom, rimMat);
       wheelGroup.add(rim);
+
+      const centerCap = new THREE.Mesh(centerCapGeom, centerCapMat);
+      wheelGroup.add(centerCap);
+
+      // Multi-spoke wheel fins (8 radial spokes inside the dish)
+      for (let s = 0; s < 8; s++) {
+        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.295, 0.025, rimRadius * 0.9), rimMat);
+        spoke.rotation.x = (s * Math.PI) / 4;
+        wheelGroup.add(spoke);
+      }
+
+      // Slotted Brake Rotor (spins with wheel)
+      const disc = new THREE.Mesh(discGeom, discMat);
+      wheelGroup.add(disc);
+
+      // Red Caliper (positioned at the leading upper edge of rotor)
+      const caliper = new THREE.Mesh(caliperGeom, caliperMat);
+      caliper.position.set(0, rimRadius * 0.65, 0.08);
+      caliper.rotation.x = -0.25;
+      wheelGroup.add(caliper);
 
       this.scene.add(wheelGroup);
       this.wheelMeshes.push(wheelGroup);

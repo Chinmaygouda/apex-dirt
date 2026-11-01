@@ -7,10 +7,12 @@ export class VehicleEffects {
   private vehicle: CustomRallyVehicle;
   private physics?: PhysicsWorld;
 
-  // 1. Exhaust Pops
+  // 1. Exhaust Pops & Water Vapor
   private exhaustFlameMesh: THREE.Mesh;
   private exhaustLight: THREE.PointLight;
   private exhaustTimer: number = 0;
+  private steamTimer: number = 0;
+  private icSprayTimer: number = 0;
   private prevThrottle: number = 0;
   private prevGear: number = 1;
   private wasShifting: boolean = false;
@@ -55,9 +57,41 @@ export class VehicleEffects {
     this.vehicle = vehicle;
     this.physics = physics;
 
-    // --- A. Exhaust Flame & Light Setup ---
-    const flameGeo = new THREE.ConeGeometry(0.09, 0.38, 8);
-    flameGeo.rotateX(-Math.PI / 2); // Point backward (-Z in local car space)
+    // --- A. Twin Exhaust Flame & Light Setup ---
+    const flameGeo1 = new THREE.ConeGeometry(0.065, 0.38, 8);
+    flameGeo1.rotateX(-Math.PI / 2);
+    flameGeo1.translate(-0.07, 0, 0); // Left pipe (x = 0.46)
+
+    const flameGeo2 = new THREE.ConeGeometry(0.065, 0.42, 8);
+    flameGeo2.rotateX(-Math.PI / 2);
+    flameGeo2.translate(0.07, 0, 0); // Right pipe (x = 0.60)
+
+    const pos1 = flameGeo1.attributes.position.array as Float32Array;
+    const pos2 = flameGeo2.attributes.position.array as Float32Array;
+    const mergedPos = new Float32Array(pos1.length + pos2.length);
+    mergedPos.set(pos1, 0);
+    mergedPos.set(pos2, pos1.length);
+
+    const norm1 = flameGeo1.attributes.normal.array as Float32Array;
+    const norm2 = flameGeo2.attributes.normal.array as Float32Array;
+    const mergedNorm = new Float32Array(norm1.length + norm2.length);
+    mergedNorm.set(norm1, 0);
+    mergedNorm.set(norm2, norm1.length);
+
+    const idx1 = flameGeo1.index!.array as Uint16Array;
+    const idx2 = flameGeo2.index!.array as Uint16Array;
+    const mergedIdx = new Uint16Array(idx1.length + idx2.length);
+    mergedIdx.set(idx1, 0);
+    const vOffset = pos1.length / 3;
+    for (let k = 0; k < idx2.length; k++) {
+      mergedIdx[idx1.length + k] = idx2[k] + vOffset;
+    }
+
+    const flameGeo = new THREE.BufferGeometry();
+    flameGeo.setAttribute('position', new THREE.BufferAttribute(mergedPos, 3));
+    flameGeo.setAttribute('normal', new THREE.BufferAttribute(mergedNorm, 3));
+    flameGeo.setIndex(new THREE.BufferAttribute(mergedIdx, 1));
+
     const flameMat = new THREE.MeshBasicMaterial({
       color: 0xff7700,
       transparent: true,
@@ -72,7 +106,7 @@ export class VehicleEffects {
 
     if (this.vehicle.chassisMesh) {
       this.vehicle.chassisMesh.add(this.exhaustFlameMesh);
-      // Position under rear right bumper at twin exhaust tailpipes
+      // Position at center between twin exhaust tailpipes at rear bumper
       this.exhaustFlameMesh.position.set(0.53, -0.04, -2.12);
     }
 
@@ -232,8 +266,8 @@ export class VehicleEffects {
     if ((throttleLift && isBrakingOrDecel) || shiftEvent) {
       this.exhaustTimer = THREE.MathUtils.randFloat(0.35, 0.50); // ~0.5s duration
       this.onExhaustPop?.();
-      // Emit sudden smoke puff from exhaust tip
-      const worldExhaust = new THREE.Vector3(0.55, -0.14, -1.38).applyQuaternion(chassisQuat).add(chassisPos);
+      // Emit sudden smoke puff from twin exhaust tips
+      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.12).applyQuaternion(chassisQuat).add(chassisPos);
       this.emitParticle(
         worldExhaust.x, worldExhaust.y, worldExhaust.z,
         -linvel.x * 0.4 + THREE.MathUtils.randFloatSpread(0.8),
@@ -252,12 +286,51 @@ export class VehicleEffects {
       this.exhaustFlameMesh.scale.set(flicker, flicker, flicker * THREE.MathUtils.randFloat(0.8, 1.4));
       (this.exhaustFlameMesh.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.randFloat(0.75, 1.0);
 
-      const worldExhaust = new THREE.Vector3(0.55, -0.14, -1.38).applyQuaternion(chassisQuat).add(chassisPos);
+      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.12).applyQuaternion(chassisQuat).add(chassisPos);
       this.exhaustLight.position.copy(worldExhaust);
-      this.exhaustLight.intensity = THREE.MathUtils.randFloat(6.0, 12.0);
+      this.exhaustLight.intensity = THREE.MathUtils.randFloat(8.0, 15.0);
     } else {
       this.exhaustFlameMesh.visible = false;
       this.exhaustLight.intensity = 0;
+    }
+
+    // Cold-Idle Exhaust Water Condensation Steam (subtle translucent vapor at idle/low-speed)
+    if (carSpeedMs < 2.5 && (telem as any).rpm > 800) {
+      this.steamTimer += dt;
+      if (this.steamTimer > 0.14) {
+        this.steamTimer = 0;
+        for (const exX of [0.46, 0.60]) {
+          const worldPipe = new THREE.Vector3(exX, -0.04, -2.12).applyQuaternion(chassisQuat).add(chassisPos);
+          this.emitParticle(
+            worldPipe.x, worldPipe.y, worldPipe.z,
+            -linvel.x * 0.1 + THREE.MathUtils.randFloatSpread(0.12),
+            THREE.MathUtils.randFloat(0.25, 0.55),
+            -linvel.z * 0.1 - THREE.MathUtils.randFloat(0.2, 0.5),
+            0.08, 0.35, 0.65,
+            new THREE.Color(0.82, 0.86, 0.90) // Soft white/blue water vapor
+          );
+        }
+      }
+    }
+
+    // Active Intercooler Water-Spray Mist (Fine evaporative mist sprayed on turbo boost)
+    const isHighBoost = inputs.throttle > 0.80 && (telem as any).rpm > 4800;
+    if (isHighBoost) {
+      this.icSprayTimer += dt;
+      if (this.icSprayTimer > 0.08) {
+        this.icSprayTimer = 0;
+        for (const nx of [-0.32, 0.32]) {
+          const worldNozzle = new THREE.Vector3(nx, 0.22, 2.20).applyQuaternion(chassisQuat).add(chassisPos);
+          this.emitParticle(
+            worldNozzle.x, worldNozzle.y, worldNozzle.z,
+            linvel.x * 0.2 + THREE.MathUtils.randFloatSpread(0.2),
+            THREE.MathUtils.randFloat(-0.25, 0.1),
+            linvel.z * 0.2 + THREE.MathUtils.randFloat(0.3, 0.7),
+            0.06, 0.38, 0.40,
+            new THREE.Color(0.88, 0.95, 1.0) // Pure fine water spray mist
+          );
+        }
+      }
     }
 
     // =========================================================
