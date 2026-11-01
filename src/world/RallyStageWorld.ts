@@ -7,24 +7,22 @@ import { PhysicsWorld } from '../physics/PhysicsWorld';
  */
 export const STAGE_PALETTE = {
   // Road & Surfaces
-  ROAD_ASPHALT: '#2b2d30',       // Main asphalt racing line
-  ROAD_RUT: '#1e2022',           // Darker compacted tyre rubber line
-  ROAD_EDGE: '#36393e',          // Outer road edge
+  ROAD_ASPHALT: '#32363b',       // High-contrast clean asphalt tarmac
+  ROAD_RUT: '#222529',           // Darker tyre rubber contact zone
+  ROAD_EDGE: '#3d4248',          // Outer road edge
   ROAD_DIRT_SHADOW: '#222528',   // Ground shadow tone for hemisphere light
   KERB_RED: '#d32f2f',           // FIA-spec red apex rumble kerb
-  KERB_WHITE: '#f8f9fa',         // FIA-spec white apex rumble kerb
-  KERB_CONCRETE: '#85898e',      // Neutral concrete kerb on straights
-  VERGE_GRASS: '#4d683a',        // Sage grass road verge
+  KERB_WHITE: '#ffffff',         // FIA-spec white apex rumble kerb
+  KERB_CONCRETE: '#8c9198',      // Neutral concrete kerb on straights
+  VERGE_GRASS: '#465f37',        // Sage grass road verge
   TERRAIN_GRASS: '#466435',      // Surrounding meadow ground base
   TERRAIN_GRASS_LIT: '#547540',  // Sunlit meadow facet
 
-  // High-Containment Side Rails & Barriers
-  BARRIER_CONCRETE: '#505459',   // Lower impact deflection base
-  BARRIER_ARMCO: '#9ea4aa',      // Middle steel Armco corrugated band
-  BARRIER_FENCE: '#2d3136',      // Upper tall containment catch-fence
-  BARRIER_POST: '#26292d',       // Heavy steel I-beam column
-  HAZARD_RED: '#d32f2f',         // Corner hazard red
-  HAZARD_WHITE: '#ffffff',       // Corner hazard white
+  // Motorsport Fence-Style Guardrails
+  RAIL_SILVER: '#dce2e8',        // Bright galvanized metallic silver rail
+  RAIL_POST: '#5a626a',          // Steel I-beam fence post
+  HAZARD_RED: '#e53935',         // High-vis corner hazard red
+  HAZARD_WHITE: '#ffffff',       // High-vis corner hazard white
 
   // Sky & Atmosphere
   SKY_ZENITH: '#3b526b',         // Clean mountain zenith sky
@@ -67,7 +65,7 @@ export class RallyStageWorld {
 
     this.createTerrainAndRoad();
     this.createStartFinishLine();
-    this.createTallSideGuardrails();
+    this.createFenceStyleGuardrails();
 
     this.scene.add(this.group);
   }
@@ -159,8 +157,8 @@ export class RallyStageWorld {
    */
   private createTerrainAndRoad(): void {
     // 9 cross-section points: Verge L, Kerb L, Road Edge L, Rut L, Center, Rut R, Road Edge R, Kerb R, Verge R
-    const crossOffsets = [-7.5, -5.3, -4.8, -2.2, 0.0, 2.2, 4.8, 5.3, 7.5];
-    const crossHeights = [-0.01, 0.045, 0.02, 0.035, 0.04, 0.035, 0.02, 0.045, -0.01];
+    const crossOffsets = [-6.2, -5.2, -4.6, -2.2, 0.0, 2.2, 4.6, 5.2, 6.2];
+    const crossHeights = [0.01, 0.055, 0.035, 0.04, 0.045, 0.04, 0.035, 0.055, 0.01];
     const N = crossOffsets.length;
 
     const vertices: number[] = [];
@@ -198,9 +196,9 @@ export class RallyStageWorld {
         const absOffset = Math.abs(offset);
         let vertexCol: THREE.Color;
 
-        if (absOffset > 5.3) {
+        if (absOffset > 5.2) {
           vertexCol = cVerge; // Outer grass verge
-        } else if (absOffset > 4.7) {
+        } else if (absOffset > 4.5) {
           // Apex rumble kerb
           if (isCorner) {
             vertexCol = kerbStripeRed ? cKerbRed : cKerbWhite;
@@ -216,7 +214,7 @@ export class RallyStageWorld {
         }
 
         // Add subtle per-vertex variation
-        const noise = (Math.sin(i * 0.5 + j * 1.5) * 0.025);
+        const noise = (Math.sin(i * 0.5 + j * 1.5) * 0.02);
         colors.push(
           Math.max(0, Math.min(1, vertexCol.r + noise)),
           Math.max(0, Math.min(1, vertexCol.g + noise)),
@@ -225,7 +223,7 @@ export class RallyStageWorld {
       }
     }
 
-    // Connect quads
+    // Connect quads with upward-facing CCW winding
     for (let i = 0; i < this.numSamples; i++) {
       for (let j = 0; j < N - 1; j++) {
         const row1 = i * N;
@@ -236,8 +234,8 @@ export class RallyStageWorld {
         const c = row2 + j;
         const d = row2 + j + 1;
 
-        indices.push(a, c, b);
-        indices.push(b, c, d);
+        indices.push(a, b, c);
+        indices.push(b, d, c);
       }
     }
 
@@ -249,9 +247,10 @@ export class RallyStageWorld {
 
     const roadMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      roughness: 0.88,
-      metalness: 0.08,
+      roughness: 0.82,
+      metalness: 0.12,
       flatShading: true,
+      side: THREE.DoubleSide,
     });
 
     const roadMesh = new THREE.Mesh(roadGeom, roadMat);
@@ -259,7 +258,7 @@ export class RallyStageWorld {
     roadMesh.castShadow = false;
     this.group.add(roadMesh);
 
-    // Large surrounding terrain ground bed (1600m x 1600m) flat at Y = 0.0
+    // Large surrounding terrain ground bed (1600m x 1600m) flat at Y = -0.05
     const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 40, 40);
     terrainGeom.rotateX(-Math.PI / 2);
     const terrainPos = terrainGeom.attributes.position;
@@ -268,7 +267,7 @@ export class RallyStageWorld {
     const cGrassLit = new THREE.Color(STAGE_PALETTE.TERRAIN_GRASS_LIT);
 
     for (let k = 0; k < terrainPos.count; k++) {
-      terrainPos.setY(k, -0.01);
+      terrainPos.setY(k, -0.05);
       const px = terrainPos.getX(k);
       const pz = terrainPos.getZ(k);
       const noise = (Math.sin(px * 0.015) * Math.cos(pz * 0.015) + 1) * 0.5;
@@ -345,7 +344,7 @@ export class RallyStageWorld {
         const tile = new THREE.Mesh(geom, isWhite ? whiteMat : blackMat);
         tile.position.set(
           -4.6 + (c + 0.5) * tileW,
-          0.045, // Flush above road surface
+          0.05, // Flush above road surface
           -1.2 + (r + 0.5) * tileL
         );
         tile.receiveShadow = true;
@@ -356,37 +355,41 @@ export class RallyStageWorld {
   }
 
   /**
-   * Extra-Tall 2.8-meter High-Containment Safety Side Rails along both sides of the road.
-   * Full-height Rapier trimesh collision ensures the vehicle physically CANNOT jump over
-   * or wedge underneath the barrier at any speed.
+   * Fence-Style Low Motorsport Guardrail:
+   * - Height: 0.78m (just above car tyre diameter of 0.66m, sleek & low)
+   * - Dual-rail post-and-beam fence design with open gap
+   * - Bright galvanized metallic silver with red/white apex stripes (NO black walls)
+   * - 1.35m Rapier containment trimesh guarantees the vehicle cannot jump over or go outside
    */
-  private createTallSideGuardrails(): void {
-    const railVertices: number[] = [];
-    const railColors: number[] = [];
-    const railIndices: number[] = [];
+  private createFenceStyleGuardrails(): void {
+    const visualVertices: number[] = [];
+    const visualColors: number[] = [];
+    const visualIndices: number[] = [];
+
+    const physVertices: number[] = [];
+    const physIndices: number[] = [];
 
     const postGroup = new THREE.Group();
-    const postHeight = 2.9; // 2.9m tall heavy support columns
-    const postGeom = new THREE.BoxGeometry(0.14, postHeight, 0.14);
+    const postHeight = 0.84; // 84 cm tall steel fence post (just above tyres)
+    const postGeom = new THREE.BoxGeometry(0.10, postHeight, 0.10);
     const postMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(STAGE_PALETTE.BARRIER_POST),
-      roughness: 0.85,
-      metalness: 0.4,
+      color: new THREE.Color(STAGE_PALETTE.RAIL_POST),
+      roughness: 0.55,
+      metalness: 0.65,
       flatShading: true,
     });
 
     const sides = [-5.5, 5.5]; // Left and Right offsets from centerline (road half-width is 5.0m)
 
-    // Palette colors
-    const cConcrete = new THREE.Color(STAGE_PALETTE.BARRIER_CONCRETE);
-    const cArmco = new THREE.Color(STAGE_PALETTE.BARRIER_ARMCO);
-    const cFence = new THREE.Color(STAGE_PALETTE.BARRIER_FENCE);
+    const cSilver = new THREE.Color(STAGE_PALETTE.RAIL_SILVER);
     const cHazardRed = new THREE.Color(STAGE_PALETTE.HAZARD_RED);
     const cHazardWhite = new THREE.Color(STAGE_PALETTE.HAZARD_WHITE);
 
     sides.forEach((sideOffset) => {
-      let vertOffset = railVertices.length / 3;
-      let prevValidIdx = -1;
+      let visVertOffset = visualVertices.length / 3;
+      let physVertOffset = physVertices.length / 3;
+      let prevVisIdx = -1;
+      let prevPhysIdx = -1;
 
       for (let i = 0; i <= this.numSamples; i++) {
         const sample = this.samples[i % this.numSamples];
@@ -396,84 +399,93 @@ export class RallyStageWorld {
 
         const base = pt.clone().add(binormal.clone().multiplyScalar(sideOffset));
 
-        // 4 height levels:
-        // Level 0: 0.00m (Ground base flush with road)
-        // Level 1: 0.45m (Concrete deflector base curb)
-        // Level 2: 1.25m (Steel Armco impact barrier top)
-        // Level 3: 2.80m (High-containment catch-fence top - prevents jumping over)
-        const p0 = base.clone();
-        const p1 = base.clone().add(normal.clone().multiplyScalar(0.45));
-        const p2 = base.clone().add(normal.clone().multiplyScalar(1.25));
-        const p3 = base.clone().add(normal.clone().multiplyScalar(2.80));
+        // 1. VISUAL DUAL-RAIL FENCE MESH:
+        // Lower Rail: 0.12m -> 0.38m (height 26cm)
+        // Gap: 0.38m -> 0.48m (10cm open gap between rails)
+        // Upper Rail: 0.48m -> 0.78m (height 30cm, just above 0.66m car tyre)
+        const pLowBot = base.clone().add(normal.clone().multiplyScalar(0.12));
+        const pLowTop = base.clone().add(normal.clone().multiplyScalar(0.38));
+        const pUpBot  = base.clone().add(normal.clone().multiplyScalar(0.48));
+        const pUpTop  = base.clone().add(normal.clone().multiplyScalar(0.78));
 
-        railVertices.push(p0.x, p0.y, p0.z);
-        railVertices.push(p1.x, p1.y, p1.z);
-        railVertices.push(p2.x, p2.y, p2.z);
-        railVertices.push(p3.x, p3.y, p3.z);
+        visualVertices.push(pLowBot.x, pLowBot.y, pLowBot.z);
+        visualVertices.push(pLowTop.x, pLowTop.y, pLowTop.z);
+        visualVertices.push(pUpBot.x,  pUpBot.y,  pUpBot.z);
+        visualVertices.push(pUpTop.x,  pUpTop.y,  pUpTop.z);
 
-        const isSharpTurn = Math.abs(sample.bankingRad) > 0.016;
+        const isSharpTurn = Math.abs(sample.bankingRad) > 0.015;
         const isStripeRed = Math.floor(i / 2) % 2 === 0;
 
-        // Colors for each tier:
-        // p0 & p1: Concrete base
-        railColors.push(cConcrete.r, cConcrete.g, cConcrete.b);
-        railColors.push(cConcrete.r, cConcrete.g, cConcrete.b);
-
-        // p2: Armco barrier (hazard stripes on turns, silver on straights)
+        let railColor: THREE.Color;
         if (isSharpTurn) {
-          const col = isStripeRed ? cHazardRed : cHazardWhite;
-          railColors.push(col.r, col.g, col.b);
+          railColor = isStripeRed ? cHazardRed : cHazardWhite;
         } else {
-          railColors.push(cArmco.r, cArmco.g, cArmco.b);
+          railColor = cSilver;
         }
 
-        // p3: Upper catch fence
-        railColors.push(cFence.r, cFence.g, cFence.b);
-
-        const curVert = vertOffset;
-        vertOffset += 4;
-
-        if (prevValidIdx !== -1) {
-          // Tier 1: p0 -> p1
-          railIndices.push(prevValidIdx + 0, curVert + 0, prevValidIdx + 1);
-          railIndices.push(prevValidIdx + 1, curVert + 0, curVert + 1);
-          railIndices.push(prevValidIdx + 0, prevValidIdx + 1, curVert + 0);
-          railIndices.push(prevValidIdx + 1, curVert + 1, curVert + 0);
-
-          // Tier 2: p1 -> p2
-          railIndices.push(prevValidIdx + 1, curVert + 1, prevValidIdx + 2);
-          railIndices.push(prevValidIdx + 2, curVert + 1, curVert + 2);
-          railIndices.push(prevValidIdx + 1, prevValidIdx + 2, curVert + 1);
-          railIndices.push(prevValidIdx + 2, curVert + 2, curVert + 1);
-
-          // Tier 3: p2 -> p3 (High Containment Catch-Fence)
-          railIndices.push(prevValidIdx + 2, curVert + 2, prevValidIdx + 3);
-          railIndices.push(prevValidIdx + 3, curVert + 2, curVert + 3);
-          railIndices.push(prevValidIdx + 2, prevValidIdx + 3, curVert + 2);
-          railIndices.push(prevValidIdx + 3, curVert + 3, curVert + 2);
+        // 4 vertices get the bright silver / red-white hazard color
+        for (let v = 0; v < 4; v++) {
+          visualColors.push(railColor.r, railColor.g, railColor.b);
         }
-        prevValidIdx = curVert;
 
-        // Heavy steel support post every 2 samples (~6.6m)
+        const curVis = visVertOffset;
+        visVertOffset += 4;
+
+        if (prevVisIdx !== -1) {
+          // Lower Rail Quad (pLowBot -> pLowTop)
+          visualIndices.push(prevVisIdx + 0, curVis + 0, prevVisIdx + 1);
+          visualIndices.push(prevVisIdx + 1, curVis + 0, curVis + 1);
+          visualIndices.push(prevVisIdx + 0, prevVisIdx + 1, curVis + 0);
+          visualIndices.push(prevVisIdx + 1, curVis + 1, curVis + 0);
+
+          // Upper Rail Quad (pUpBot -> pUpTop)
+          visualIndices.push(prevVisIdx + 2, curVis + 2, prevVisIdx + 3);
+          visualIndices.push(prevVisIdx + 3, curVis + 2, curVis + 3);
+          visualIndices.push(prevVisIdx + 2, prevVisIdx + 3, curVis + 2);
+          visualIndices.push(prevVisIdx + 3, curVis + 3, curVis + 2);
+        }
+        prevVisIdx = curVis;
+
+        // Upright fence post every 2 samples (~6.6m)
         if (i % 2 === 0 && i < this.numSamples) {
           const post = new THREE.Mesh(postGeom, postMat);
           post.position.set(base.x, base.y + postHeight * 0.5, base.z);
           post.castShadow = true;
           postGroup.add(post);
         }
+
+        // 2. PHYSICS CONTAINMENT COLLIDER MESH:
+        // Extends from ground (Y = 0.0m) up to 1.35m height
+        // Guarantees the vehicle CANNOT jump over or slip outside the track
+        const physBot = base.clone();
+        const physTop = base.clone().add(normal.clone().multiplyScalar(1.35));
+
+        physVertices.push(physBot.x, physBot.y, physBot.z);
+        physVertices.push(physTop.x, physTop.y, physTop.z);
+
+        const curPhys = physVertOffset;
+        physVertOffset += 2;
+
+        if (prevPhysIdx !== -1) {
+          physIndices.push(prevPhysIdx, curPhys, prevPhysIdx + 1);
+          physIndices.push(prevPhysIdx + 1, curPhys, curPhys + 1);
+          physIndices.push(prevPhysIdx, prevPhysIdx + 1, curPhys);
+          physIndices.push(prevPhysIdx + 1, curPhys + 1, curPhys);
+        }
+        prevPhysIdx = curPhys;
       }
     });
 
     const railGeom = new THREE.BufferGeometry();
-    railGeom.setAttribute('position', new THREE.Float32BufferAttribute(railVertices, 3));
-    railGeom.setAttribute('color', new THREE.Float32BufferAttribute(railColors, 3));
-    railGeom.setIndex(railIndices);
+    railGeom.setAttribute('position', new THREE.Float32BufferAttribute(visualVertices, 3));
+    railGeom.setAttribute('color', new THREE.Float32BufferAttribute(visualColors, 3));
+    railGeom.setIndex(visualIndices);
     railGeom.computeVertexNormals();
 
     const railMat = new THREE.MeshStandardMaterial({
       vertexColors: true,
-      metalness: 0.65,
-      roughness: 0.35,
+      metalness: 0.75,
+      roughness: 0.22,
       flatShading: true,
       side: THREE.DoubleSide,
     });
@@ -484,12 +496,12 @@ export class RallyStageWorld {
     this.group.add(railMesh);
     this.group.add(postGroup);
 
-    // Full 2.8m height physics collision barrier (friction 0.10 for glancing deflection without snagging)
+    // Static Rapier deflection barrier collider (height 1.35m, friction 0.10, restitution 0.15)
     const rapier = this.physics.rapier;
     const railBody = this.physics.world.createRigidBody(rapier.RigidBodyDesc.fixed());
     const railColDesc = rapier.ColliderDesc.trimesh(
-      new Float32Array(railVertices),
-      new Uint32Array(railIndices)
+      new Float32Array(physVertices),
+      new Uint32Array(physIndices)
     ).setFriction(0.10).setRestitution(0.15);
     const railCollider = this.physics.world.createCollider(railColDesc, railBody);
     this.physicsColliders.push(railCollider);

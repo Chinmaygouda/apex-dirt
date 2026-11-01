@@ -60,6 +60,7 @@ async function initGame() {
 
   // 7. Custom Tyre Model Vehicle
   const vehicle = new CustomRallyVehicle(scene, physics);
+  vehicle.tuning.surfaceMode = 'auto';
   vehicle.worldSurfaceQuery = (x, z) => rallyWorld.getSurfaceAt(x, z);
 
   // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
