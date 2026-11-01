@@ -60,6 +60,12 @@ export class RallyStageWorld {
   // Physics colliders
   private physicsColliders: RAPIER.Collider[] = [];
 
+  // Tree trunk obstacle circles for ChaseCamera avoidance
+  public trunkObstacles: { x: number; z: number; r: number }[] = [];
+  public getTrunkObstacles(): { x: number; z: number; r: number }[] {
+    return this.trunkObstacles;
+  }
+
   constructor(private scene: THREE.Scene, private physics: PhysicsWorld) {
     this.spline = this.buildSplineRoute();
     this.totalLength = this.spline.getLength();
@@ -275,37 +281,29 @@ export class RallyStageWorld {
     terrainMesh.position.y = -0.15;
     this.group.add(terrainMesh);
 
-    // Build Rapier physics colliders: segmented cuboid road pads
-    // Using 200 segment cuboids provides smooth 120Hz collision with 0 mesh-stitching glitches
+    // Build Rapier physics colliders: 1:1 exact trimesh for road ribbon and surrounding terrain
+    // Guarantees zero height discrepancies (no sinking beneath road) and no falling through the world
     const rapier = this.physics.rapier;
-    const numColliders = 160;
-    const colStep = this.totalLength / numColliders;
+    const roadBody = this.physics.world.createRigidBody(rapier.RigidBodyDesc.fixed());
+    const roadColDesc = rapier.ColliderDesc.trimesh(
+      new Float32Array(vertices),
+      new Uint32Array(indices)
+    ).setFriction(0.9).setRestitution(0.0);
+    const roadCollider = this.physics.world.createCollider(roadColDesc, roadBody);
+    this.physicsColliders.push(roadCollider);
 
-    for (let c = 0; c < numColliders; c++) {
-      const u = c / numColliders;
-      const pt = this.spline.getPointAt(u);
-      const tang = this.spline.getTangentAt(u).normalize();
-      const uNext = Math.min(1.0, u + 1 / numColliders);
-      const ptNext = this.spline.getPointAt(uNext);
-
-      const center = pt.clone().add(ptNext).multiplyScalar(0.5);
-      const segLen = pt.distanceTo(ptNext);
-
-      const bodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(center.x, center.y - 0.35, center.z);
-      const body = this.physics.world.createRigidBody(bodyDesc);
-
-      // Orient cuboid along road tangent
-      const angleY = Math.atan2(tang.x, tang.z);
-      const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angleY);
-      body.setRotation({ x: qY.x, y: qY.y, z: qY.z, w: qY.w }, true);
-
-      // Width covers road + verges (14m), height 0.7m
-      const colDesc = rapier.ColliderDesc.cuboid(7.0, 0.35, segLen * 0.58)
-        .setFriction(0.9)
-        .setRestitution(0.0);
-      const collider = this.physics.world.createCollider(colDesc, body);
-      this.physicsColliders.push(collider);
-    }
+    // Surrounding terrain bed collision: full 1600m x 1600m continuous collision prevents falling through map off-road
+    const terrainBody = this.physics.world.createRigidBody(
+      rapier.RigidBodyDesc.fixed().setTranslation(0, -0.15, 0)
+    );
+    const terrainVertices = new Float32Array(terrainGeom.attributes.position.array);
+    const terrainIndices = new Uint32Array(terrainGeom.index!.array);
+    const terrainColDesc = rapier.ColliderDesc.trimesh(
+      terrainVertices,
+      terrainIndices
+    ).setFriction(0.7).setRestitution(0.0);
+    const terrainCollider = this.physics.world.createCollider(terrainColDesc, terrainBody);
+    this.physicsColliders.push(terrainCollider);
   }
 
   /**
@@ -400,10 +398,12 @@ export class RallyStageWorld {
       if (isPine) {
         pineTrunkMesh.setMatrixAt(pineIdx, dummy.matrix);
         pineFoliageMesh.setMatrixAt(pineIdx, dummy.matrix);
+        this.trunkObstacles.push({ x, z, r: 0.5 * scale });
         pineIdx++;
       } else if (broadIdx < numBroad) {
         broadTrunkMesh.setMatrixAt(broadIdx, dummy.matrix);
         broadFoliageMesh.setMatrixAt(broadIdx, dummy.matrix);
+        this.trunkObstacles.push({ x, z, r: 0.7 * scale });
         broadIdx++;
       }
     }

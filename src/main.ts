@@ -82,6 +82,7 @@ async function initGame() {
 
   // 8. Chase Camera
   const camera = new ChaseCamera(window.innerWidth / window.innerHeight);
+  camera.setTrunkObstacles(rallyWorld.getTrunkObstacles());
 
   // 9. Input & UI with Demo Automation
   const inputManager = new InputManager();

@@ -64,10 +64,10 @@ export class SandboxEnvironment {
       .setRestitution(0.0);
     this.groundCollider = this.physics.world.createCollider(groundColliderDesc, groundBody);
 
-    // Perimeter boundary colliders to keep vehicles safely on the testing grounds
+    // Perimeter boundary colliders to keep vehicles safely within the stage & terrain boundaries (1600m)
     const wallHalfThickness = 2.0;
     const wallHeight = 4.0;
-    const wallHalfSpan = 590.0;
+    const wallHalfSpan = 800.0;
 
     const createWall = (px: number, pz: number, hx: number, hz: number) => {
       const bDesc = rapier.RigidBodyDesc.fixed().setTranslation(px, wallHeight / 2, pz);
@@ -76,10 +76,10 @@ export class SandboxEnvironment {
       this.physics.world.createCollider(cDesc, b);
     };
 
-    createWall(0, 590, wallHalfSpan, wallHalfThickness);
-    createWall(0, -590, wallHalfSpan, wallHalfThickness);
-    createWall(590, 0, wallHalfThickness, wallHalfSpan);
-    createWall(-590, 0, wallHalfThickness, wallHalfSpan);
+    createWall(0, 800, wallHalfSpan, wallHalfThickness);
+    createWall(0, -800, wallHalfSpan, wallHalfThickness);
+    createWall(800, 0, wallHalfThickness, wallHalfSpan);
+    createWall(-800, 0, wallHalfThickness, wallHalfSpan);
   }
 
   private createSkidPadMarkings(): void {
