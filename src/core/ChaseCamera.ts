@@ -10,7 +10,8 @@ export class ChaseCamera {
   public followHeight = 1.95;
   public cameraLag = 0.08; // Smooth interpolation factor
   public baseFov = 50;
-  public maxSpeedFov = 62;
+  public maxSpeedFov = 68;
+  public currentHorizonRollDeg = 0;
 
   public cameraMode: 'chase_follow' | 'chase_slide' = 'chase_follow';
 
@@ -97,6 +98,22 @@ export class ChaseCamera {
     this.currentTarget.lerp(desiredTarget, lerpFactor);
 
     this.camera.lookAt(this.currentTarget);
+
+    // Horizon roll tilt in slides: up to ~8 deg, smoothed, no per-frame jump > 1 deg (<= 30.0 deg/s)
+    let targetHorizonRollDeg = 0;
+    if (slideFactor > 0.001) {
+      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(chassisQuat);
+      const latSpeed = velVec.dot(right);
+      const rawTilt = THREE.MathUtils.clamp((Math.abs(slideAngleRad) / THREE.MathUtils.degToRad(35.0)) * 8.0, 0, 8.0);
+      targetHorizonRollDeg = Math.sign(latSpeed) * rawTilt * speedFactor;
+    }
+    const maxDeltaRoll = 30.0 * dt;
+    const deltaRoll = THREE.MathUtils.clamp(targetHorizonRollDeg - this.currentHorizonRollDeg, -maxDeltaRoll, maxDeltaRoll);
+    this.currentHorizonRollDeg += deltaRoll;
+
+    if (Math.abs(this.currentHorizonRollDeg) > 0.01) {
+      this.camera.rotateZ(THREE.MathUtils.degToRad(this.currentHorizonRollDeg));
+    }
   }
 
   public onResize(width: number, height: number): void {

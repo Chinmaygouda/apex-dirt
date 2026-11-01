@@ -8,6 +8,7 @@ import { TelemetryHUD } from './ui/TelemetryHUD';
 import { VehicleDebugOverlay } from './ui/VehicleDebugOverlay';
 import { TuningPanel } from './ui/TuningPanel';
 import { THREE_PALETTE } from './core/Constants';
+import { RallyStageWorld, STAGE_PALETTE } from './world/RallyStageWorld';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
 
 async function initGame() {
@@ -25,29 +26,29 @@ async function initGame() {
   renderer.toneMappingExposure = 1.05;
   document.body.appendChild(renderer.domElement);
 
-  // 2. Scene Setup
+  // 2. Scene Setup: Soft Blue Horizon Haze & Cascaded Atmosphere
   const scene = new THREE.Scene();
-  scene.background = THREE_PALETTE.skyHorizon;
-  scene.fog = new THREE.FogExp2(THREE_PALETTE.skyHorizon, 0.005);
+  scene.background = new THREE.Color(STAGE_PALETTE.SKY_HORIZON);
+  scene.fog = new THREE.FogExp2(new THREE.Color(STAGE_PALETTE.FOG_HAZE), 0.0018);
 
-  // 3. Lighting (Sun with high-res shadow camera tracking the car)
-  const hemiLight = new THREE.HemisphereLight(THREE_PALETTE.skyZenith, THREE_PALETTE.roadDirtShadow, 0.85);
+  // 3. Lighting: Low-Angle Directional Sun for dramatic tree shadows across road
+  const hemiLight = new THREE.HemisphereLight(new THREE.Color(STAGE_PALETTE.SKY_ZENITH), new THREE.Color(STAGE_PALETTE.ROAD_DIRT_SHADOW), 0.85);
   scene.add(hemiLight);
 
-  const sunLight = new THREE.DirectionalLight(0xfffaed, 2.0);
-  sunLight.position.set(40, 60, -30);
+  const sunLight = new THREE.DirectionalLight(new THREE.Color(STAGE_PALETTE.SUN_WARMTH), 2.2);
+  sunLight.position.set(65, 40, -50);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.width = 2048;
   sunLight.shadow.mapSize.height = 2048;
   sunLight.shadow.bias = -0.0005;
 
-  const shadowCamSize = 35;
+  const shadowCamSize = 45;
   sunLight.shadow.camera.left = -shadowCamSize;
   sunLight.shadow.camera.right = shadowCamSize;
   sunLight.shadow.camera.top = shadowCamSize;
   sunLight.shadow.camera.bottom = -shadowCamSize;
-  sunLight.shadow.camera.near = 10;
-  sunLight.shadow.camera.far = 160;
+  sunLight.shadow.camera.near = 5;
+  sunLight.shadow.camera.far = 240;
   scene.add(sunLight);
   scene.add(sunLight.target);
 
@@ -58,11 +59,26 @@ async function initGame() {
   const physics = new PhysicsWorld();
   await physics.init();
 
-  // 6. World Sandbox Environment
+  // 6. World Sandbox Environment & 1.6+ km Spline Rally Stage
   const sandbox = new SandboxEnvironment(scene, physics);
+  const rallyWorld = new RallyStageWorld(scene, physics);
 
-  // 7. Custom Tyre Model Vehicle (Phase 2)
+  // 7. Custom Tyre Model Vehicle
   const vehicle = new CustomRallyVehicle(scene, physics);
+  vehicle.worldSurfaceQuery = (x, z) => rallyWorld.getSurfaceAt(x, z);
+
+  // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
+  const { VehicleEffects } = await import('./effects/VehicleEffects');
+  const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
+
+  // 7c. Stage Manager & 20 Checkpoint Gates (Phase 4)
+  const { StageManager } = await import('./gameplay/StageManager');
+  const stageManager = new StageManager(scene, rallyWorld, vehicle);
+
+  // 7d. Procedural Rally Audio Engine (Phase 5)
+  const { RallyAudioEngine } = await import('./audio/RallyAudioEngine');
+  const audioEngine = new RallyAudioEngine();
+  vehicleEffects.onExhaustPop = () => audioEngine.triggerExhaustPop();
 
   // 8. Chase Camera
   const camera = new ChaseCamera(window.innerWidth / window.innerHeight);
@@ -70,6 +86,7 @@ async function initGame() {
   // 9. Input & UI with Demo Automation
   const inputManager = new InputManager();
   const hud = new TelemetryHUD();
+  hud.onToggleAudio = () => audioEngine.toggleMute();
 
   let demoMode: 'skidpad' | 'handbrake' | 'testA' | null = null;
   let demoTimer = 0;
@@ -152,9 +169,12 @@ async function initGame() {
 
   // Deterministic Video Recorder
   const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
-  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight);
+  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight, stageManager);
   (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
   (window as any).renderKeyboardVideo = () => videoRecorder.renderClipKeyboardFeel();
+  (window as any).stageManager = stageManager;
+  (window as any).restartStage = () => stageManager.restart();
+  (window as any).audioEngine = audioEngine;
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -300,6 +320,9 @@ async function initGame() {
     // Update Chase Camera
     camera.update(vehicle, frameDt);
 
+    // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
+    vehicleEffects.update(frameDt, inputs, camera.camera, sunLight);
+
     // Follow vehicle with directional sunlight shadow camera
     if (vehicle.chassisMesh) {
       const carPos = vehicle.chassisMesh.position;
@@ -307,10 +330,18 @@ async function initGame() {
       sunLight.target.position.copy(carPos);
     }
 
+    if (inputs.reset) {
+      stageManager.restart();
+    }
+    stageManager.update(frameDt);
+
     // Update Telemetry HUD & Debug Overlay
     const telemetry = vehicle.getTelemetry(inputs);
-    hud.update(telemetry);
+    hud.update(telemetry, stageManager);
     debugOverlay.update(telemetry);
+
+    // Update Procedural Audio Engine (Phase 5)
+    audioEngine.update(frameDt, telemetry);
 
     // Render Scene
     renderer.render(scene, camera.camera);
