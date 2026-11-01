@@ -5,7 +5,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CustomRallyVehicle } from './src/vehicles/CustomRallyVehicle';
 import { PhysicsWorld } from './src/physics/PhysicsWorld';
 import { ChaseCamera } from './src/core/ChaseCamera';
-import { LANE3_SPEC as S, LANE3_SPEC_V2 as S2 } from './lane3_spec';
+import { LANE3_SPEC as S, LANE3_SPEC_V2 as S2, LANE3_SPEC_V3 as S3 } from './lane3_spec';
 
 await RAPIER.init();
 const lines = fs.readFileSync('hardpack_reference_telemetry.csv', 'utf8').trim().split('\n');
@@ -84,6 +84,7 @@ for (const t of S2.outwardRollDeg.atTimesS) { const f = near(A, t), o = -Math.si
 for (const t of S.rearDroopVisibleM.atTimesS) { const d = near(A, t).droop, m = (d[2] + d[3]) / 2; chk(`rearDroop@${t}`, m >= S.rearDroopVisibleM.minMeanRearM, `RL ${d[2].toFixed(3)} RR ${d[3].toFixed(3)} mean ${m.toFixed(3)} m`); }
 { const d = near(A, S.rearDroopRelaxed.atS).droop; chk('droopRelaxed', Math.max(d[2], d[3]) <= S.rearDroopRelaxed.maxM, `RL ${d[2].toFixed(3)} RR ${d[3].toFixed(3)} m @${S.rearDroopRelaxed.atS}s`); }
 { const w = A.filter(f => f.t >= S.frontDroopQuiet.fromS && f.t <= S.frontDroopQuiet.toS); const m = Math.max(...w.flatMap(f => [f.droop[0], f.droop[1]])); chk('frontDroopQuiet', m <= S.frontDroopQuiet.maxM, `max front droop ${m.toFixed(3)} m`); }
+{ const w = A.filter(f => f.t >= S3.rearDroopQuietBeforeHandbrake.fromS && f.t <= S3.rearDroopQuietBeforeHandbrake.toS); const m = Math.max(...w.flatMap(f => [f.droop[2], f.droop[3]])); chk('rearDroopQuietBeforeHandbrake', m <= S3.rearDroopQuietBeforeHandbrake.maxM, `max rear droop ${m.toFixed(3)} m in ${S3.rearDroopQuietBeforeHandbrake.fromS}-${S3.rearDroopQuietBeforeHandbrake.toS}s`); }
 { let m = 0; for (let i = 0; i < A.length; i++) m = Math.max(m, Math.abs(A[i].roll - B[i].roll), Math.abs(A[i].pitch - B[i].pitch), ...A[i].droop.map((d, k) => Math.abs(d - B[i].droop[k])));
   chk('handbrakeIndependence', m <= S.handbrakeIndependenceTol, `max visual difference when only the handbrake flag differs: ${m.toExponential(2)}`); }
 { const w = C.filter(f => f.t >= 3.8 && f.t <= 4.5); const clr = Math.min(...w.map(f => Math.hypot(f.camPos.x - trunk.x, f.camPos.z - trunk.z) - trunk.r));

@@ -101,6 +101,10 @@ export interface CustomVehicleTuning {
 // constants from lane3_frames.ts output; never by editing lane3_spec.ts.
 const VISUAL_DROOP_UNLOAD_START = 0.14;
 const VISUAL_DROOP_UNLOAD_FULL = 0.22;
+// Rear droop additionally requires the rear wheels to be braked toward lock: mean rear slip ratio of -0.40 (start) to -0.70 (full).
+// Measured on lane3-clean (lane3_frames.ts TRACE): plain 1.0 braking -> mean rear slip ratio -0.10..-0.22; handbrake lock -> -0.76..-0.94.
+const VISUAL_REAR_LOCK_START = 0.40;
+const VISUAL_REAR_LOCK_FULL = 0.70;
 export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
@@ -1181,6 +1185,8 @@ export class CustomRallyVehicle {
       ? 1.0
       : 1.0 - (this.wheelNormalForces[k] || 0) / Math.max(500, this.visualStaticValid ? this.visualStaticFz[k] : fallbackFz));
     const axleUnload = [(unloadRaw[0] + unloadRaw[1]) * 0.5, (unloadRaw[2] + unloadRaw[3]) * 0.5];
+    const rearLock = Math.max(0, -(this.wheelSlipRatios[2] + this.wheelSlipRatios[3]) * 0.5);
+    const rearLockGate = THREE.MathUtils.smoothstep(rearLock, VISUAL_REAR_LOCK_START, VISUAL_REAR_LOCK_FULL);
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1193,7 +1199,8 @@ export class CustomRallyVehicle {
       const unload = this.wheelInContact[i]
         ? THREE.MathUtils.clamp(axleUnload[i < 2 ? 0 : 1], 0, 1)
         : 1.0;
-      const targetWheelDroop = maxWheelDroop * THREE.MathUtils.smoothstep(unload, VISUAL_DROOP_UNLOAD_START, VISUAL_DROOP_UNLOAD_FULL);
+      const targetWheelDroop = maxWheelDroop * THREE.MathUtils.smoothstep(unload, VISUAL_DROOP_UNLOAD_START, VISUAL_DROOP_UNLOAD_FULL)
+        * (i >= 2 && this.wheelInContact[i] ? rearLockGate : 1.0);
       const currentDroop = this.lastVisualDroop[i] || 0;
       const visualDroop = currentDroop + (targetWheelDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       this.lastVisualDroop[i] = visualDroop;
