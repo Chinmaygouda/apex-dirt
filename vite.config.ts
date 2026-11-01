@@ -3,8 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(process.cwd(), 'v9');
-const VIDEOS_DIR = process.env.VIDEOS_DIR || path.resolve(process.cwd(), 'v9', 'videos');
+const TARGET_PHASE = process.env.TARGET_PHASE || 'phase4';
+const ARTIFACT_DIR = process.env.ARTIFACT_DIR || path.resolve(process.cwd(), 'overnight', TARGET_PHASE);
+const VIDEOS_DIR = process.env.VIDEOS_DIR || path.resolve(process.cwd(), 'overnight', TARGET_PHASE);
 const TEMP_FRAMES_DIR = path.resolve(process.cwd(), 'temp_video_frames');
 
 export default defineConfig({
