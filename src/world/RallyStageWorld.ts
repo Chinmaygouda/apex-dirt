@@ -78,32 +78,45 @@ export class RallyStageWorld {
    */
   private buildSplineRoute(): THREE.CatmullRomCurve3 {
     const rawPoints: [number, number, number][] = [
-      [0, 0, -50],      // 0: Approach to start line
-      [0, 0, 0],        // 1: Start/Finish line (Z=0, heading straight +Z)
-      [0, 0, 60],       // 2: Main straight
-      [0, 0, 130],      // 3: Main straight high-speed approach
-      [0, 0, 190],      // 4: Turn 1 Braking zone
-      [25, 0, 260],     // 5: Turn 1 Entry (Fast Right Sweeper)
-      [75, 0, 310],     // 6: Turn 1 Apex
-      [135, 0, 315],    // 7: Turn 2 Entry
-      [185, 0, 275],    // 8: Turn 2 Exit / S-chicane entry
-      [195, 0, 205],    // 9: S-chicane Left Apex
-      [175, 0, 140],    // 10: S-chicane Right Transition
-      [150, 0, 85],     // 11: Infield intermediate straight
-      [165, 0, 20],     // 12: Turn 5 (The Carousel Hairpin Entry)
-      [190, 0, -40],    // 13: Carousel Outer Sweep
-      [170, 0, -100],   // 14: Carousel Apex
-      [120, 0, -135],   // 15: Carousel Exit
-      [50, 0, -130],    // 16: South straightaway
-      [-20, 0, -105],   // 17: Turn 7 Left Kink
-      [-80, 0, -65],    // 18: Turn 8 Chicane Entry
-      [-130, 0, -15],   // 19: Turn 8 Apex
-      [-145, 0, 45],    // 20: West Sweeper
-      [-130, 0, 115],   // 21: North-West Hairpin Entry
-      [-85, 0, 150],    // 22: North-West Hairpin Apex
-      [-45, 0, 115],    // 23: Return Sweeper
-      [-20, 0, 45],     // 24: Final Turn Entry
-      [-4, 0, -15],     // 25: Final Turn Exit onto Main Straight
+      // --- MAIN STRAIGHT (X = 0, facing +Z) ---
+      [0, 0, -80],      // 0: Main straight entry
+      [0, 0, -40],      // 1: Straightaway
+      [0, 0, 0],        // 2: Start / Finish Line
+      [0, 0, 60],       // 3: High speed straight
+      [0, 0, 120],      // 4: High speed straight
+      [0, 0, 180],      // 5: Turn 1 Braking Zone
+
+      // --- SECTOR 1: EAST SWEEPERS (X > 0) ---
+      [20, 0, 240],     // 6: Turn 1 Entry (Right)
+      [60, 0, 280],     // 7: Turn 1 Apex
+      [110, 0, 290],    // 8: Turn 1 Exit
+      [160, 0, 260],    // 9: Turn 2 Entry
+      [180, 0, 210],    // 10: Turn 2 Apex (Right sweeper heading south)
+      [175, 0, 150],    // 11: Sector 1 Exit / Chicane entry
+
+      // --- SECTOR 2: INFIELD TECHNICAL S-BENDS ---
+      [150, 0, 100],    // 12: Turn 3 Left Flick
+      [165, 0, 40],     // 13: Turn 4 Right Flick
+      [170, 0, -20],    // 14: Fast Southward Straight
+
+      // --- SECTOR 3: SOUTH CAROUSEL (CROSSING FROM +X TO -X WELL SOUTH OF MAIN STRAIGHT) ---
+      [150, 0, -90],    // 15: Turn 5 (Carousel Entry)
+      [100, 0, -140],   // 16: Carousel Apex
+      [30, 0, -165],    // 17: South Cross (crossing X at Z = -165, far below Z = -80)
+      [-40, 0, -165],   // 18: South Cross Westbound
+      [-110, 0, -140],  // 19: Carousel Exit (West side)
+
+      // --- SECTOR 4: WEST COMPLEX (X < -25) ---
+      [-150, 0, -90],   // 20: West Sweeper Turn 6
+      [-160, 0, -20],   // 21: West Straightaway heading North
+      [-150, 0, 50],    // 22: Technical North-West Turn 7
+      [-120, 0, 100],   // 23: Turn 8 Apex
+      [-80, 0, 70],     // 24: Turn 9 Infield transition
+      [-60, 0, 0],      // 25: Approach to Final Corner
+
+      // --- FINAL CORNER (RETURNING SMOOTHLY INTO MAIN STRAIGHT AT Z = -80) ---
+      [-45, 0, -50],    // 26: Final Corner Apex (Turn 10)
+      [-20, 0, -75],    // 27: Final Corner Exit onto Straight
     ];
 
     const vectors = rawPoints.map(p => new THREE.Vector3(p[0], p[1], p[2]));
