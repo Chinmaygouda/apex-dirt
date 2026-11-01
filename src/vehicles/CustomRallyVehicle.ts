@@ -1540,11 +1540,17 @@ export class CustomRallyVehicle {
     }
   }
 
+  public worldSurfaceQuery?: (worldX: number, worldZ: number) => { name: string; multiplier: number };
+
   public getSurfaceGripMultiplier(worldX: number, worldZ: number): { name: string; multiplier: number } {
     if (this.tuning.surfaceMode === 'tarmac') return { name: 'Tarmac', multiplier: this.tuning.gripMultiplierTarmac };
     if (this.tuning.surfaceMode === 'dirt') return { name: 'Dirt', multiplier: this.tuning.gripMultiplierDirt };
     if (this.tuning.surfaceMode === 'gravel') return { name: 'Gravel', multiplier: this.tuning.gripMultiplierGravel };
     if (this.tuning.surfaceMode === 'grass') return { name: 'Grass', multiplier: this.tuning.gripMultiplierGrass };
+
+    if (this.worldSurfaceQuery) {
+      return this.worldSurfaceQuery(worldX, worldZ);
+    }
 
     // 'auto' mode based on world coordinates:
     // Outer perimeter beyond 75m is grass/forest edge, inner sandbox is packed dirt

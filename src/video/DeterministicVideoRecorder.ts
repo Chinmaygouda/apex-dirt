@@ -401,14 +401,14 @@ export class DeterministicVideoRecorder {
         });
 
         const keyFrames: Record<number, string> = {
-          30: 'screenshot_01_exhaust_and_dust_60mph.png',
-          60: 'screenshot_02_tracks_recovered_60mph.png',
-          120: 'screenshot_03_tyre_smoke_and_tracks_80mph.png',
-          150: 'screenshot_04_horizon_tilt_recovered_80mph.png',
-          210: 'screenshot_05_speed_fov_and_dirt_dust_100mph.png',
-          240: 'screenshot_06_persistent_tracks_100mph.png',
-          300: 'screenshot_07_parallel_tracks_sturn_slide.png',
-          345: 'screenshot_08_sun_glare_and_exhaust_pop.png',
+          30: 'screenshot_01_spline_road_elevation_crest.png',
+          60: 'screenshot_02_instanced_pines_and_shadows.png',
+          120: 'screenshot_03_broadleaf_canopies_and_verge.png',
+          150: 'screenshot_04_yellow_chevrons_hairpin.png',
+          210: 'screenshot_05_teal_marker_signs_and_fences.png',
+          240: 'screenshot_06_spectators_on_grassy_bank.png',
+          300: 'screenshot_07_horizon_blue_haze_and_clouds.png',
+          345: 'screenshot_08_stage_slide_scrub_and_props.png',
         };
         if (keyFrames[globalFrame]) {
           await fetch('/api/save-screenshot', {
