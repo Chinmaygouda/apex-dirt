@@ -50,6 +50,7 @@ interface FrameJson {
     z: number;
   };
   carYaw: number;
+  world?: string;
 }
 
 function updateStatus(msg: string) {
@@ -141,17 +142,47 @@ async function runRenderer() {
 
   createDeterministicClouds(scene);
 
-  updateStatus('Initializing Rapier physics and CurveRoadWorld...');
+  const urlParams = new URLSearchParams(window.location.search);
+  const isOpenWorld = urlParams.get('world') === 'open';
+
+  updateStatus(isOpenWorld ? 'Initializing Rapier physics on OPEN GROUND...' : 'Initializing Rapier physics and CurveRoadWorld...');
   const physics = new PhysicsWorld();
   await physics.init();
 
-  const curveRoadWorld = new CurveRoadWorld();
-  curveRoadWorld.buildPhysics(physics);
-  await curveRoadWorld.buildVisuals(scene);
+  let curveRoadWorld: CurveRoadWorld | null = null;
+  if (isOpenWorld) {
+    // Open ground physics: 50000x50000 flat cuboid at y = -0.5, friction 0.9, restitution 0.0
+    const groundBodyDesc = physics.rapier.RigidBodyDesc.fixed().setTranslation(0, -0.5, 0);
+    const groundBody = physics.world.createRigidBody(groundBodyDesc);
+    const groundColliderDesc = physics.rapier.ColliderDesc.cuboid(50000.0, 0.5, 50000.0)
+      .setFriction(0.9)
+      .setRestitution(0.0);
+    physics.world.createCollider(groundColliderDesc, groundBody);
+
+    // Open ground visual: flat plane with same ground color (0x556a47)
+    const groundGeo = new THREE.PlaneGeometry(10000, 10000, 1, 1);
+    const groundMat = new THREE.MeshStandardMaterial({
+      color: 0x556a47,
+      roughness: 0.95,
+      metalness: 0.05,
+      flatShading: true,
+    });
+    const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+    groundMesh.rotation.x = -Math.PI / 2;
+    groundMesh.position.set(0, 0, 0);
+    groundMesh.receiveShadow = true;
+    scene.add(groundMesh);
+  } else {
+    curveRoadWorld = new CurveRoadWorld();
+    curveRoadWorld.buildPhysics(physics);
+    await curveRoadWorld.buildVisuals(scene);
+  }
 
   const vehicle = new CustomRallyVehicle(scene, physics as any);
   vehicle.tuning.surfaceMode = 'dirt';
-  vehicle.worldSurfaceQuery = (x, z) => curveRoadWorld.getSurfaceAt(x, z);
+  if (curveRoadWorld) {
+    vehicle.worldSurfaceQuery = (x, z) => curveRoadWorld!.getSurfaceAt(x, z);
+  }
 
   const camera = new ChaseCamera(9 / 16);
 
@@ -260,11 +291,13 @@ async function runRenderer() {
             z: parseFloat(tr.z.toFixed(3)),
           },
           carYaw: parseFloat(carYawDeg.toFixed(2)),
+          ...(isOpenWorld ? { world: 'open' } : {}),
         };
 
+        const prefix = isOpenWorld ? 'lane3_o_' : 'lane3_f_';
         const tStr = tTarget.toFixed(1);
-        await postArtifact(`lane3_f_${tStr}.png`, dataUrl, true);
-        await postArtifact(`lane3_f_${tStr}.json`, JSON.stringify(jsonData, null, 2), false);
+        await postArtifact(`${prefix}${tStr}.png`, dataUrl, true);
+        await postArtifact(`${prefix}${tStr}.json`, JSON.stringify(jsonData, null, 2), false);
       }
     }
   }
@@ -300,7 +333,14 @@ async function runRenderer() {
     });
   }
   const csDataUrl = csCanvas.toDataURL('image/png');
-  await postArtifact('lane3_contact_sheet.png', csDataUrl, true);
+  const csFilename = isOpenWorld ? 'lane3_o_contact_sheet.png' : 'lane3_contact_sheet.png';
+  await postArtifact(csFilename, csDataUrl, true);
+
+  if (isOpenWorld) {
+    updateStatus('Open world renders complete! Sending completion signal...');
+    await fetch(`${RECEIVER_URL}/render-complete`, { method: 'POST' });
+    return;
+  }
 
   // PART 3.6: 4 Corner Frames from Fixed Autopilot
   updateStatus('Replaying autopilot for 4 corner frames...');

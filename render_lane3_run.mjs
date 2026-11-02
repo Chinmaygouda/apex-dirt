@@ -14,7 +14,7 @@ function getBrowserPath() {
   throw new Error('Neither Chrome nor Edge was found at standard locations.');
 }
 
-export async function runRenderSession(outDir) {
+export async function runRenderSession(outDir, urlPath = '/render_lane3.html') {
   if (!fs.existsSync(outDir)) {
     fs.mkdirSync(outDir, { recursive: true });
   }
@@ -82,7 +82,7 @@ export async function runRenderSession(outDir) {
         '--use-angle=d3d11',
         '--no-sandbox',
         '--window-size=1280,1400',
-        'http://localhost:3001/render_lane3.html'
+        `http://localhost:3001${urlPath}`
       ];
 
       console.log(`[Runner] Launching browser: ${browserBin}`);
@@ -124,19 +124,23 @@ function computeHashes(dir) {
 }
 
 async function main() {
-  const run1Dir = path.resolve('artifacts_lane3_run1');
-  const run2Dir = path.resolve('artifacts_lane3_run2');
+  const isOpen = process.argv.includes('open') || process.argv.includes('--open');
+  const urlPath = isOpen ? '/render_lane3.html?world=open' : '/render_lane3.html';
+  const prefix = isOpen ? 'artifacts_lane3_open' : 'artifacts_lane3';
 
-  console.log('=== PART 3: DETERMINISTIC RENDER PASS 1 ===');
-  await runRenderSession(run1Dir);
+  const run1Dir = path.resolve(`${prefix}_run1`);
+  const run2Dir = path.resolve(`${prefix}_run2`);
+
+  console.log(`=== PART 3: DETERMINISTIC RENDER PASS 1 (${isOpen ? 'OPEN GROUND' : 'CURVED ROAD'}) ===`);
+  await runRenderSession(run1Dir, urlPath);
   const hashes1 = computeHashes(run1Dir);
   console.log('Pass 1 SHA256 hashes:');
   for (const [f, h] of Object.entries(hashes1)) {
     console.log(`  ${f.padEnd(30)} ${h}`);
   }
 
-  console.log('\n=== PART 3: DETERMINISTIC RENDER PASS 2 ===');
-  await runRenderSession(run2Dir);
+  console.log(`\n=== PART 3: DETERMINISTIC RENDER PASS 2 (${isOpen ? 'OPEN GROUND' : 'CURVED ROAD'}) ===`);
+  await runRenderSession(run2Dir, urlPath);
   const hashes2 = computeHashes(run2Dir);
   console.log('Pass 2 SHA256 hashes:');
   for (const [f, h] of Object.entries(hashes2)) {
@@ -160,7 +164,7 @@ async function main() {
   }
 
   // Copy finalized run1 artifacts to output directory
-  const finalDir = path.resolve('artifacts_lane3_final');
+  const finalDir = path.resolve(`${prefix}_final`);
   if (!fs.existsSync(finalDir)) fs.mkdirSync(finalDir, { recursive: true });
   for (const f of fs.readdirSync(run1Dir)) {
     fs.copyFileSync(path.join(run1Dir, f), path.join(finalDir, f));

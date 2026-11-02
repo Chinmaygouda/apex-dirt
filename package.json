@@ -16,7 +16,8 @@
     "measure:v1": "tsx measure_v1.ts",
     "test:keyboard": "tsx keyboard_feel_test.ts",
     "test:world": "tsx test_world_contract.ts",
-    "measure:curves": "tsx lane3_curves.ts"
+    "measure:curves": "tsx lane3_curves.ts",
+    "measure:launch": "tsx lane3_launch.ts"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.14.0",
