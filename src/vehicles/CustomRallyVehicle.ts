@@ -4,6 +4,7 @@ import { THREE_PALETTE, PALETTE } from '../core/Constants';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { VehicleInputs } from '../core/InputManager';
 import { VehicleTelemetry } from './RapierBaselineVehicle';
+import { SuspensionState, SUSPENSION_STATIC_LENGTH } from './SuspensionState';
 
 export interface CustomVehicleTuning {
   // Suspension
@@ -12,6 +13,20 @@ export interface CustomVehicleTuning {
   damperRebound: number;
   suspensionRestLength: number;
   antiRollBarStiffness: number;
+  // Lane 2 additions. All optional: when omitted the rear axle mirrors the front and the stops are inactive,
+  // which reproduces the previous behaviour exactly.
+  springStiffnessRear?: number;        // N/m
+  damperCompressionRear?: number;      // Ns/m
+  damperReboundRear?: number;          // Ns/m
+  suspensionRestLengthRear?: number;   // m, spring-free length of the rear corners
+  antiRollBarStiffnessRear?: number;   // N/m
+  bumpStopLength?: number;             // m, wheel length below which the progressive bump stop adds spring force
+  bumpStopRate?: number;               // N/m, initial stop rate (progressive: the rate doubles bumpStopProgressM into the stop)
+  bumpStopProgressM?: number;          // m, distance into the stop at which the stop rate has doubled (default 0.03; larger = flatter)
+  droopStopLength?: number;            // m, longest wheel length the suspension can reach; ground beyond it = wheel hangs
+  damperBlowOffVelocity?: number;      // m/s, piston speed above which the damper turns digressive (both directions)
+  damperBlowOffRatio?: number;         // 0..1, damping slope above the blow-off speed as a fraction of the low-speed slope
+  centerOfMassHeight?: number;         // m, world height of the centre of gravity at the static ride (default: geometric centre of the collider, 0.819 m)
 
   // Aerodynamics (Reduced downforce CLA as requested)
   aeroDragCdA: number;
@@ -98,6 +113,7 @@ export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
   public chassisBody!: RAPIER.RigidBody;
+  private chassisCollider?: RAPIER.Collider;
   public drivingDirectionMode: 'forward' | 'reverse' = 'forward';
 
   // Visual materials
@@ -110,11 +126,24 @@ export class CustomRallyVehicle {
 
   // Vehicle Parameters
   public tuning: CustomVehicleTuning = {
-    springStiffness: 42000,       // N/m
-    damperCompression: 3400,      // Ns/m
-    damperRebound: 4200,          // Ns/m
+    // ---- Suspension (Lane 2). Front axle, anti-roll and CoG are the stock 89aa93a values on purpose: front spring, roll
+    // stiffness and CoG height each break test:keyboard or the replay windows when moved (measured, see the Lane 2 report).
+    // NOTE ON THE TIME BASE: Rapier steps at its default dt = 1/60 s but this class applies forces with dt = 1/120 s, so static
+    // wheel load is 2.00x the car's weight and the REALISED ride frequency / damping ratio are about sqrt(2) x the paper values.
+    // Rear rates: spring 54,600 N/m (1.3 x front) cuts squat; rest length = 0.2593 + 5907 N / k keeps the 0.2593 m static ride.
+    springStiffness: 42000,       // N/m front
+    springStiffnessRear: 54600,   // N/m rear
+    damperCompression: 2774,      // Ns/m front (design zeta 0.39; was 3400)
+    damperRebound: 3426,          // Ns/m front (1.235 x compression; was 4200)
+    damperCompressionRear: 3163,  // Ns/m rear
+    damperReboundRear: 3906,      // Ns/m rear
     suspensionRestLength: 0.40,   // m (ensures continuous tyre road contact under heavy braking)
+    suspensionRestLengthRear: 0.3675, // m (static compression 0.1082 m at 5907 N)
     antiRollBarStiffness: 16000,  // N/m (keeps body level and prevents rollover during hard cornering)
+    antiRollBarStiffnessRear: 8000, // N/m (half the front bar: front share of roll stiffness ~56%, still inside the 45-62% band)
+    bumpStopLength: 0.15,         // m wheel length below which the progressive bump stop acts (10.9 cm of travel from static)
+    bumpStopRate: 35000,          // N/m initial stop rate
+    bumpStopProgressM: 0.08,      // m into the stop at which the rate has doubled (flat enough for a ramp landing under 6x static load)
 
     aeroDragCdA: 0.72,            // Typical 80s rally coupe Cd*A
     downforceCLA: 0.20,           // Substantially reduced CLA (from 1.37 to 0.20)
@@ -197,6 +226,7 @@ export class CustomRallyVehicle {
   // Wheel states (0: FL, 1: FR, 2: RL, 3: RR)
   private wheelAnchors: THREE.Vector3[] = [];
   private wheelAngularVel = [0, 0, 0, 0];
+  private suspTravelVelocity = [0, 0, 0, 0]; // m/s, + = compressing (Lane 2 SuspensionState)
   private prevSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
   private currentSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
   public wheelInContact = [true, true, true, true];
@@ -322,7 +352,36 @@ export class CustomRallyVehicle {
       .setRestitution(0.05)
       .setTranslation(0, 0.16, 0);
 
-    this.physics.world.createCollider(colDesc, this.chassisBody);
+    this.chassisCollider = this.physics.world.createCollider(colDesc, this.chassisBody);
+    if (this.tuning.centerOfMassHeight !== undefined) this.setCenterOfMassHeight(this.tuning.centerOfMassHeight);
+  }
+
+  /**
+   * Lane 2: move the centre of gravity WITHOUT moving the collision geometry (ground clearance and ramp/landing contact
+   * stay as they were). Mass and principal inertia are held at the values the 0.85 x 0.32 x 2.05 m box at density 270 has
+   * about its own centre, so yaw/pitch/roll response times are unchanged and only the weight-transfer lever arm changes.
+   * `heightM` is the world height of the CoG at the static ride (body origin at 0.6593 m).
+   */
+  public setCenterOfMassHeight(heightM: number): void {
+    if (!this.chassisCollider) return;
+    const W = 1.7, H = 0.64, D = 4.1, DENSITY = 270; // full box dimensions of the chassis collider
+    const m = DENSITY * W * H * D;
+    const localY = heightM - 0.6593 - 0.16;          // relative to the collider centre (collider sits 0.16 m above the body origin)
+    this.chassisCollider.setMassProperties(
+      m,
+      { x: 0, y: localY, z: 0 },
+      { x: (m / 12) * (H * H + D * D), y: (m / 12) * (W * W + D * D), z: (m / 12) * (W * W + H * H) },
+      { x: 0, y: 0, z: 0, w: 1 },
+    );
+  }
+
+  /** Per-axle spring and damper rates actually used by the substep (rear falls back to front when no rear value is set). */
+  public getAxleSuspensionRates(): { front: { k: number; cc: number; cr: number }; rear: { k: number; cc: number; cr: number } } {
+    const t = this.tuning;
+    return {
+      front: { k: t.springStiffness, cc: t.damperCompression, cr: t.damperRebound },
+      rear: { k: t.springStiffnessRear ?? t.springStiffness, cc: t.damperCompressionRear ?? t.damperCompression, cr: t.damperReboundRear ?? t.damperRebound },
+    };
   }
 
   /**
@@ -556,7 +615,10 @@ export class CustomRallyVehicle {
     const isHandbrake = inputs.handbrake;
 
     // Suspension Raycasts & Spring Forces
-    const rayLength = this.tuning.suspensionRestLength + this.wheelRadius + 0.15;
+    // Per-corner geometry. Rear values mirror the front when the optional rear tuning fields are omitted.
+    const tn = this.tuning;
+    const restOf = (i: number) => (i >= 2 && tn.suspensionRestLengthRear !== undefined ? tn.suspensionRestLengthRear : tn.suspensionRestLength);
+    const maxLenOf = (i: number) => (tn.droopStopLength !== undefined ? tn.droopStopLength : restOf(i) + 0.15);
     const rayDir = upVec.clone().negate();
 
     const compressions = [0, 0, 0, 0];
@@ -566,6 +628,8 @@ export class CustomRallyVehicle {
     for (let i = 0; i < 4; i++) {
       const localAnchor = this.wheelAnchors[i];
       const worldAnchor = localAnchor.clone().applyQuaternion(chassisQuat).add(worldChassisPos);
+
+      const rayLength = maxLenOf(i) + this.wheelRadius;
 
       // Cast ray with Rapier
       const ray = new rapier.Ray(
@@ -588,7 +652,7 @@ export class CustomRallyVehicle {
         this.wheelInContact[i] = true;
         const currentLength = hit.timeOfImpact - this.wheelRadius;
         this.currentSuspensionLengths[i] = currentLength;
-        compressions[i] = Math.max(0, this.tuning.suspensionRestLength - currentLength);
+        compressions[i] = Math.max(0, restOf(i) - currentLength);
 
         const hp = worldAnchor.clone().add(rayDir.clone().multiplyScalar(hit.timeOfImpact));
         hitPoints[i] = hp;
@@ -596,7 +660,8 @@ export class CustomRallyVehicle {
       } else {
         this.wheelInContact[i] = false;
         this.prevWheelInContact[i] = false;
-        this.currentSuspensionLengths[i] = this.tuning.suspensionRestLength;
+        // Airborne: the wheel hangs at the droop stop if one is defined, otherwise at the spring-free length (as before).
+        this.currentSuspensionLengths[i] = tn.droopStopLength !== undefined ? tn.droopStopLength : restOf(i);
         compressions[i] = 0;
         hitPoints[i] = null;
       }
@@ -618,7 +683,7 @@ export class CustomRallyVehicle {
 
     // Anti-Roll Bar Load Transfer
     const arbFront = (compressions[0] - compressions[1]) * this.tuning.antiRollBarStiffness;
-    const arbRear = (compressions[2] - compressions[3]) * this.tuning.antiRollBarStiffness;
+    const arbRear = (compressions[2] - compressions[3]) * (this.tuning.antiRollBarStiffnessRear ?? this.tuning.antiRollBarStiffness);
 
     // 3. Compute Tyre Forces for Each Wheel
     for (let i = 0; i < 4; i++) {
@@ -634,6 +699,7 @@ export class CustomRallyVehicle {
         this.lastGroundSpeedsMph[i] = 0;
         this.lastWheelSpeedsMph[i] = this.wheelAngularVel[i] * this.wheelRadius * 2.23694;
         this.prevSuspensionLengths[i] = this.currentSuspensionLengths[i];
+        this.suspTravelVelocity[i] = 0;
         continue;
       }
 
@@ -645,9 +711,28 @@ export class CustomRallyVehicle {
       }
       this.prevSuspensionLengths[i] = this.currentSuspensionLengths[i];
       this.prevWheelInContact[i] = true;
+      this.suspTravelVelocity[i] = suspVelocity;
 
-      const damperCoeff = suspVelocity >= 0 ? this.tuning.damperCompression : this.tuning.damperRebound;
-      let Fz = deltaX * this.tuning.springStiffness + suspVelocity * damperCoeff;
+      const isRearCorner = i >= 2;
+      const springK = isRearCorner ? (tn.springStiffnessRear ?? tn.springStiffness) : tn.springStiffness;
+      const dampComp = isRearCorner ? (tn.damperCompressionRear ?? tn.damperCompression) : tn.damperCompression;
+      const dampReb = isRearCorner ? (tn.damperReboundRear ?? tn.damperRebound) : tn.damperRebound;
+      const damperCoeff = suspVelocity >= 0 ? dampComp : dampReb;
+      // Digressive damper (inactive unless damperBlowOffVelocity is set): above the blow-off speed the damping slope drops to
+      // damperBlowOffRatio of its low-speed value, which keeps body control at low piston speed and stops the damper from
+      // delivering a huge force spike on a landing.
+      let dampVel = suspVelocity;
+      if (tn.damperBlowOffVelocity !== undefined) {
+        const av = Math.abs(dampVel);
+        if (av > tn.damperBlowOffVelocity) dampVel = Math.sign(dampVel) * (tn.damperBlowOffVelocity + (av - tn.damperBlowOffVelocity) * (tn.damperBlowOffRatio ?? 1));
+      }
+      let Fz = deltaX * springK + dampVel * damperCoeff;
+
+      // Progressive bump stop (inactive unless bumpStopLength and bumpStopRate are set)
+      if (tn.bumpStopLength !== undefined && tn.bumpStopRate) {
+        const xb = tn.bumpStopLength - this.currentSuspensionLengths[i];
+        if (xb > 0) Fz += tn.bumpStopRate * xb * (1 + xb / (tn.bumpStopProgressM ?? 0.03));
+      }
 
       // Apply Anti-Roll Bar offset
       if (i === 0) Fz += arbFront;
@@ -1217,6 +1302,48 @@ export class CustomRallyVehicle {
       this.brakeLightSpriteL.material.opacity = isBraking ? 0.95 : 0.0;
       this.brakeLightSpriteR.material.opacity = isBraking ? 0.95 : 0.0;
     }
+  }
+
+  /**
+   * Lane 2 contract: physical suspension and chassis state for Lane 3 (body motion, camera). See SuspensionState.ts for
+   * units and sign conventions. Reads physics state only; never reads or writes visual offsets.
+   */
+  public getSuspensionState(): SuspensionState {
+    const tn = this.tuning;
+    const wheels = [0, 1, 2, 3].map((i) => {
+      const rest = i >= 2 && tn.suspensionRestLengthRear !== undefined ? tn.suspensionRestLengthRear : tn.suspensionRestLength;
+      const len = this.currentSuspensionLengths[i];
+      return {
+        travel: rest - len,
+        travelVelocity: this.suspTravelVelocity[i],
+        normalForce: this.wheelNormalForces[i],
+        grounded: this.wheelInContact[i],
+        droopFromStatic: len - SUSPENSION_STATIC_LENGTH,
+      };
+    }) as SuspensionState['wheels'];
+
+    let pitchDeg = 0;
+    let rollDeg = 0;
+    if (this.chassisBody) {
+      const r = this.chassisBody.rotation();
+      const q = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+      pitchDeg = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(fwd.y, -1, 1)));
+      rollDeg = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(rgt.y, -1, 1)));
+    }
+
+    return {
+      wheels,
+      chassis: {
+        heave: (wheels[0].droopFromStatic + wheels[1].droopFromStatic + wheels[2].droopFromStatic + wheels[3].droopFromStatic) / 4,
+        pitchDeg,
+        rollDeg,
+        lateralG: this.smoothedLateralG,
+        longitudinalG: this.smoothedLongitudinalG,
+      },
+      staticLength: SUSPENSION_STATIC_LENGTH,
+    };
   }
 
   public getVisualPitchDeg(): number {
