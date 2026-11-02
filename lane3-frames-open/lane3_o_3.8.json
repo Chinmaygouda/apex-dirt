@@ -1,0 +1,28 @@
+{
+  "t": 3.8,
+  "speed": 82,
+  "slip": 44.75,
+  "latG": -1.382,
+  "roll": 6.3,
+  "pitch": -0.24,
+  "droop": {
+    "FL": 0,
+    "FR": 0,
+    "RL": 0,
+    "RR": 0
+  },
+  "cameraOffAxis": 40,
+  "horizon": 8,
+  "cameraPosition": {
+    "x": -2.961,
+    "y": 2.464,
+    "z": 407.563
+  },
+  "carPosition": {
+    "x": -3.03,
+    "y": 0.66,
+    "z": 412.777
+  },
+  "carYaw": -49.31,
+  "world": "open"
+}
