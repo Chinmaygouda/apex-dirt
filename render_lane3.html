@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lane 3 Deterministic Frame Renderer</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #0f172a;
+    }
+    #render-canvas {
+      width: 720px;
+      height: 1280px;
+      display: block;
+    }
+    #status-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: #38bdf8;
+      font-family: monospace;
+      font-size: 14px;
+      background: rgba(15, 23, 42, 0.85);
+      padding: 8px 12px;
+      border-radius: 4px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <div id="status-overlay">Initializing Deterministic Renderer...</div>
+  <canvas id="render-canvas" width="720" height="1280"></canvas>
+  <script type="module" src="/render_lane3_entry.ts"></script>
+</body>
+</html>

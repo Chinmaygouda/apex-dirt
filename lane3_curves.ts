@@ -1,3 +1,4 @@
+import fs from 'fs';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import { PhysicsWorld } from './src/physics/PhysicsWorld';
@@ -15,32 +16,58 @@ interface SectionMetrics {
   durationS: number;
   meanMph: number;
   maxMph: number;
-  maxLatG: number;
-  signedLatG: number;
+  signedLatGMean: number;
+  signedLatGPeak: number;
+  latG95thPercentile: number;
   maxSlipDeg: number;
-  maxRollDeg: number;
-  signedRollDeg: number;
+  signedRollMeanDeg: number;
+  peakAbsRollDeg: number;
+  minPitchDeg: number;
   maxPitchDeg: number;
-  meanRearDroopM: number;
   maxRearDroopM: number;
+  maxFrontDroopM: number;
   maxCamOffAxisDeg: number;
+  minHorizonRollDeg: number;
   maxHorizonRollDeg: number;
   maxDistFromCentreM: number;
+  offRoadFrames: number;
 }
 
 interface TelemetrySample {
-  s: number;
+  pass: number;
+  frame: number;
   t: number;
+  s: number;
+  section: number;
   mph: number;
-  latG: number;          // signed
-  slipDeg: number;       // signed
-  rollDeg: number;       // signed
-  pitchDeg: number;      // signed
-  rearDroopMeanM: number;
-  rearDroopMaxM: number;
+  steer: number;
+  throttle: number;
+  brake: number;
+  handbrake: boolean;
+  latG: number;               // instantaneous / raw
+  smoothedLatG: number;       // smoothed
+  slipDeg: number;            // drift angle beta
+  yawDeg: number;             // car heading in deg
+  rollDeg: number;            // visual roll
+  pitchDeg: number;           // visual pitch
+  droopFL: number;
+  droopFR: number;
+  droopRL: number;
+  droopRR: number;
+  fzFL: number;
+  fzFR: number;
+  fzRL: number;
+  fzRR: number;
+  slipRatioFL: number;
+  slipRatioFR: number;
+  slipRatioRL: number;
+  slipRatioRR: number;
   camOffAxisDeg: number;
-  camHorizonRollDeg: number; // signed
+  camHorizonRollDeg: number;  // signed
   distFromCentreM: number;
+  x: number;
+  y: number;
+  z: number;
 }
 
 interface SimResult {
@@ -48,30 +75,40 @@ interface SimResult {
   allSamples: TelemetrySample[];
 }
 
+function getSectionDesignSpeed(secId: number): number {
+  switch (secId) {
+    case 2: return 49.6; // R120 right (-20% from 62)
+    case 4: return 40.5; // R60 left (-10% from 45)
+    case 6: return 25.2; // R25 right (-10% from 28)
+    case 8: return 45.0; // R80 left chicane arc 1 (-10% from 50)
+    case 9: return 45.0; // R80 right chicane arc 2 (-10% from 50)
+    default: return 80.0; // straights
+  }
+}
+
 function getTargetSpeedMph(s: number): number {
-  const sec = sectionAt(s);
+  const currentSec = sectionAt(s);
   let baseTarget = 80;
 
-  if (sec.type === 'RIGHT' || sec.type === 'LEFT') {
-    const r = sec.radius ?? 120;
-    if (r >= 100) baseTarget = 62;
-    else if (r >= 70) baseTarget = 50;
-    else if (r >= 50) baseTarget = 45;
-    else baseTarget = 28;
-    return baseTarget;
+  if (currentSec.type !== 'STRAIGHT') {
+    return getSectionDesignSpeed(currentSec.id);
   }
 
-  // Straight: check distance to next corner (brake 60m before to corner speed)
-  const nextSecIndex = sec.id;
+  // On straight: look ahead to upcoming corner and begin braking early
+  const nextSecIndex = currentSec.id; // next section 1-based index is currentSec.id + 1, so index is currentSec.id
   if (nextSecIndex < CourseGeometry.sections.length) {
     const nextSec = CourseGeometry.sections[nextSecIndex];
-    const distToNext = nextSec.sStart - s;
-    if (distToNext <= 60) {
-      const r = nextSec.radius ?? 120;
-      if (r >= 100) return 62;
-      else if (r >= 70) return 50;
-      else if (r >= 50) return 45;
-      else return 28;
+    const cornerSpeedMph = getSectionDesignSpeed(nextSec.id);
+    if (cornerSpeedMph < 80) {
+      const distToCorner = nextSec.sStart - s;
+      // Required braking distance with ~6.0 m/s^2 deceleration plus margin
+      const v0 = 80 * 0.44704;
+      const v1 = cornerSpeedMph * 0.44704;
+      const brakeDist = ((v0 * v0 - v1 * v1) / (2 * 6.0)) + 12.0;
+      if (distToCorner <= brakeDist) {
+        const progress = Math.max(0, Math.min(1, distToCorner / brakeDist));
+        return cornerSpeedMph + progress * (80 - cornerSpeedMph);
+      }
     }
   }
 
@@ -86,6 +123,8 @@ function getTargetSpeedMph(s: number): number {
 async function runCalibration(): Promise<void> {
   const physics = new PhysicsWorld();
   await physics.init();
+  physics.world.integrationParameters.dt = 1 / 120;
+
   const world = new CurveRoadWorld();
   world.buildPhysics(physics);
   const vehicle = new CustomRallyVehicle(new THREE.Scene(), physics as any);
@@ -108,9 +147,10 @@ async function runCalibration(): Promise<void> {
   console.log(`Conclusion: +steer turns toward -heading (LEFT / counter-clockwise), -steer turns toward +heading (RIGHT / clockwise).\n`);
 }
 
-async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult> {
+async function runSimulation(passNumber: number, pass2HandbrakeHairpin: boolean, printDebug: boolean): Promise<SimResult> {
   const physics = new PhysicsWorld();
   await physics.init();
+  physics.world.integrationParameters.dt = 1 / 120;
 
   const world = new CurveRoadWorld();
   world.buildPhysics(physics);
@@ -124,7 +164,7 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
   // Spawn vehicle at s = 20
   vehicle.resetPosition();
 
-  // Give initial speed ~30 mph to start moving smoothly
+  // Initial speed ~30 mph to start moving smoothly
   const v0 = 30 * 0.44704;
   vehicle.chassisBody.setLinvel({ x: 0, y: 0, z: v0 }, true);
   (vehicle as any).currentGear = 2;
@@ -134,7 +174,7 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
 
   const baseInputs = { reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false };
 
-  // Settle suspension
+  // Settle suspension: 15 substeps of 1/120s
   for (let i = 0; i < 15; i++) {
     physics.step(1 / 120, (dt) => {
       vehicle.updatePhysicsSubstep(dt, { throttle: 0.5, brake: 0, steer: 0, handbrake: false, ...baseInputs });
@@ -152,6 +192,12 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
   const maxSimTime = 120;
   let handbrakeFramesRemaining = 0;
   let enteredSec6 = false;
+  let frameIndex = 0;
+
+  if (printDebug) {
+    console.log('--- AUTOPILOT DEBUGGING TRACE (Sections 2 and 4) ---');
+    console.log('Frame   Sec     s(m)    CrossTrackErr(m)  HeadingErr(deg)  SteerCmd  Convention');
+  }
 
   while (simTime < maxSimTime) {
     const tr = vehicle.chassisBody.translation();
@@ -190,25 +236,23 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
     if (isHandbrake) {
       throttle = 0.3;
       brake = 0;
-    } else if (speedErr > 0.5) {
-      throttle = Math.min(1.0, speedErr * 0.35 + 0.2);
+    } else if (speedErr > 0.4) {
+      throttle = Math.min(1.0, speedErr * 0.25 + 0.15);
       brake = 0;
-    } else if (speedErr < -0.8) {
+    } else if (speedErr < -0.4) {
       throttle = 0;
       brake = Math.min(1.0, -speedErr * 0.35);
     } else {
-      throttle = 0.15;
+      throttle = 0.12;
       brake = 0;
     }
 
-    // Pure pursuit lookahead L = 12m + 0.4 * speedMs
-    const L = Math.max(8, 12.0 + 0.4 * speedMs);
-    const targetS = Math.min(totalLength, carS + L);
-    const targetPt = CourseGeometry.sample(targetS);
-
-    // Target in world coordinates
-    const targetWorldX = targetPt.x + WORLD_CONFIG.rigidTransform.transX;
-    const targetWorldZ = targetPt.z + WORLD_CONFIG.rigidTransform.transZ;
+    // Geometry reference and car orientation
+    const refPt = CourseGeometry.sample(carS);
+    const normX = Math.cos(refPt.heading);
+    const normZ = -Math.sin(refPt.heading);
+    // Signed cross-track error: positive when car is to the right of centreline
+    const crossTrackError = (courseX - refPt.x) * normX + (courseZ - refPt.z) * normZ;
 
     const q = vehicle.chassisBody.rotation();
     const carQuat = new THREE.Quaternion(q.x, q.y, q.z, q.w);
@@ -217,22 +261,55 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
     fwd.normalize();
 
     const carHeading = Math.atan2(fwd.x, fwd.z);
-    const dx = targetWorldX - tr.x;
-    const dz = targetWorldZ - tr.z;
+    let headingError = ((refPt.heading - carHeading + Math.PI) % (2 * Math.PI)) - Math.PI;
+    if (headingError < -Math.PI) headingError += 2 * Math.PI;
 
-    let alpha = ((Math.atan2(dx, dz) - carHeading + Math.PI) % (2 * Math.PI)) - Math.PI;
-    if (alpha < -Math.PI) alpha += 2 * Math.PI;
+    // Speed-sensitive steering lock from CustomRallyVehicle
+    const maxSteerRad = THREE.MathUtils.degToRad(31.5);
+    const forwardSpeedMs = Math.max(1.0, speedMs);
+    const targetAyLimit = 1.15 * 9.80665;
+    const kinSteerRad = (2.70 * targetAyLimit) / (forwardSpeedMs * forwardSpeedMs);
+    const slipSteerRad = 0.046;
+    const speedTaper = THREE.MathUtils.smoothstep(speedMph, 30.0, 60.0);
+    const cruiseLockRad = THREE.MathUtils.lerp(maxSteerRad, Math.min(maxSteerRad, kinSteerRad + slipSteerRad), speedTaper);
 
-    const delta = Math.atan2(2.0 * 2.6 * Math.sin(alpha), L);
-    let steerGain = 2.2;
-    if (currentSec.id === 6 && isHandbrake) steerGain = 2.8;
-    let steer = - (delta / 0.55) * steerGain;
+    // Lookahead for heading anticipation
+    const L = Math.min(14.0, Math.max(5.0, 0.35 * speedMs));
+    const targetPt = CourseGeometry.sample(Math.min(totalLength, carS + L));
 
-    // Counter-steer / yaw damping
+    let lookaheadHeadingError = ((targetPt.heading - carHeading + Math.PI) % (2 * Math.PI)) - Math.PI;
+    if (lookaheadHeadingError < -Math.PI) lookaheadHeadingError += 2 * Math.PI;
+
+    // Stanley control:
+    // 1) Heading term: road heading > car heading (+h) -> turn RIGHT (-steer)
+    const steerHeading = - (lookaheadHeadingError / cruiseLockRad) * 1.0;
+
+    // 2) Cross-track term: car to right (+e) -> turn LEFT (+steer)
+    const crossTrackSteerAngle = Math.atan2(0.85 * crossTrackError, forwardSpeedMs + 1.0);
+    const steerCrossTrack = + (crossTrackSteerAngle / cruiseLockRad);
+
+    // 3) Yaw rate damping: counter-steer if yawing excessively
     const yawRate = vehicle.chassisBody.angvel().y;
-    steer -= yawRate * 0.05;
+    const steerDamp = - (yawRate * 0.04);
+
+    let steer = steerHeading + steerCrossTrack + steerDamp;
+
+    if (currentSec.id === 6 && isHandbrake) {
+      steer = Math.sign(steer) * Math.min(1.0, Math.abs(steer) * 1.4);
+    }
 
     steer = Math.max(-1.0, Math.min(1.0, steer));
+
+    if (printDebug && (currentSec.id === 2 || currentSec.id === 4) && frameIndex % 15 === 0) {
+      const headingDeg = (headingError * 180 / Math.PI);
+      console.log(
+        `${String(frameIndex).padStart(5)}   Sec ${currentSec.id}   ${carS.toFixed(1).padStart(7)}m   ` +
+        `${(crossTrackError >= 0 ? '+' : '') + crossTrackError.toFixed(3).padStart(7)}m   ` +
+        `${(headingDeg >= 0 ? '+' : '') + headingDeg.toFixed(2).padStart(7)}°   ` +
+        `${(steer >= 0 ? '+' : '') + steer.toFixed(3).padStart(6)}   ` +
+        `+steer=LEFT, -steer=RIGHT`
+      );
+    }
 
     const inputs = {
       throttle,
@@ -255,27 +332,50 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
     cd.normalize();
     const offAxisDeg = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(fwd.dot(cd), -1, 1)));
     const droop = vehicle.lastVisualDroop;
-    const rearDroopMean = (droop[2] + droop[3]) * 0.5;
-    const rearDroopMax = Math.max(droop[2], droop[3]);
+    const fz = (vehicle as any).wheelNormalForces as number[];
+    const sr = (vehicle as any).wheelSlipRatios as number[];
 
     const rawLatG = (vehicle as any).smoothedLateralG || 0;
     const rawRoll = vehicle.getVisualRollDeg();
     const rawPitch = vehicle.getVisualPitchDeg();
     const rawHorizon = cam.currentHorizonRollDeg || 0;
+    const carYawDeg = (carHeading * 180) / Math.PI;
 
     const sample: TelemetrySample = {
-      s: carS,
+      pass: passNumber,
+      frame: frameIndex,
       t: simTime,
+      s: carS,
+      section: currentSec.id,
       mph: speedMph,
-      latG: rawLatG,
+      steer,
+      throttle,
+      brake,
+      handbrake: isHandbrake,
+      latG: (vehicle as any).lateralG || 0,
+      smoothedLatG: rawLatG,
       slipDeg: vehicle.driftAngleDeg || 0,
+      yawDeg: carYawDeg,
       rollDeg: rawRoll,
       pitchDeg: rawPitch,
-      rearDroopMeanM: rearDroopMean,
-      rearDroopMaxM: rearDroopMax,
+      droopFL: droop[0],
+      droopFR: droop[1],
+      droopRL: droop[2],
+      droopRR: droop[3],
+      fzFL: fz[0],
+      fzFR: fz[1],
+      fzRL: fz[2],
+      fzRR: fz[3],
+      slipRatioFL: sr[0],
+      slipRatioFR: sr[1],
+      slipRatioRL: sr[2],
+      slipRatioRR: sr[3],
       camOffAxisDeg: offAxisDeg,
       camHorizonRollDeg: rawHorizon,
       distFromCentreM: distance,
+      x: tr.x,
+      y: tr.y,
+      z: tr.z,
     };
 
     allSamples.push(sample);
@@ -284,9 +384,10 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
     }
 
     simTime += dt;
+    frameIndex++;
   }
 
-  // Aggregate metrics per section
+  // Aggregate metrics per section (Part 2.3)
   const results: SectionMetrics[] = [];
   for (let id = 1; id <= 10; id++) {
     const sec = CourseGeometry.sections[id - 1];
@@ -298,20 +399,47 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
     const speeds = samples.map((s) => s.mph);
     const meanMph = speeds.reduce((a, b) => a + b, 0) / speeds.length;
     const maxMph = Math.max(...speeds);
-    const maxLatG = Math.max(...samples.map((s) => Math.abs(s.latG)));
-    const maxSlipDeg = Math.max(...samples.map((s) => Math.abs(s.slipDeg)));
-    const maxRollDeg = Math.max(...samples.map((s) => Math.abs(s.rollDeg)));
-    const maxPitchDeg = Math.max(...samples.map((s) => Math.abs(s.pitchDeg)));
-    const meanRearDroopM = samples.map((s) => s.rearDroopMeanM).reduce((a, b) => a + b, 0) / samples.length;
-    const maxRearDroopM = Math.max(...samples.map((s) => s.rearDroopMaxM));
-    const maxCamOffAxisDeg = Math.max(...samples.map((s) => s.camOffAxisDeg));
-    const maxHorizonRollDeg = Math.max(...samples.map((s) => Math.abs(s.camHorizonRollDeg)));
-    const maxDistFromCentreM = Math.max(...samples.map((s) => s.distFromCentreM));
 
-    // Mid-corner signed values (sample closest to median)
-    const midSample = samples[Math.floor(samples.length / 2)];
-    const signedLatG = midSample ? midSample.latG : 0;
-    const signedRollDeg = midSample ? midSample.rollDeg : 0;
+    // LatG: signed mean, signed peak (at max |latG|), |95th percentile|
+    const latGs = samples.map((s) => s.smoothedLatG);
+    const signedLatGMean = latGs.reduce((a, b) => a + b, 0) / latGs.length;
+    let peakAbsG = -1;
+    let signedLatGPeak = 0;
+    for (const g of latGs) {
+      if (Math.abs(g) > peakAbsG) {
+        peakAbsG = Math.abs(g);
+        signedLatGPeak = g;
+      }
+    }
+    const sortedAbsLatG = [...latGs.map(g => Math.abs(g))].sort((a, b) => a - b);
+    const p95Index = Math.min(sortedAbsLatG.length - 1, Math.floor(sortedAbsLatG.length * 0.95));
+    const latG95thPercentile = sortedAbsLatG[p95Index] || 0;
+
+    const maxSlipDeg = Math.max(...samples.map((s) => Math.abs(s.slipDeg)));
+
+    // Roll: signed mean, peak |.|
+    const rolls = samples.map((s) => s.rollDeg);
+    const signedRollMeanDeg = rolls.reduce((a, b) => a + b, 0) / rolls.length;
+    const peakAbsRollDeg = Math.max(...rolls.map(r => Math.abs(r)));
+
+    // Pitch: min/max
+    const pitches = samples.map((s) => s.pitchDeg);
+    const minPitchDeg = Math.min(...pitches);
+    const maxPitchDeg = Math.max(...pitches);
+
+    // Droop: rear max, front max
+    const maxRearDroopM = Math.max(...samples.map((s) => Math.max(s.droopRL, s.droopRR)));
+    const maxFrontDroopM = Math.max(...samples.map((s) => Math.max(s.droopFL, s.droopFR)));
+
+    const maxCamOffAxisDeg = Math.max(...samples.map((s) => s.camOffAxisDeg));
+
+    // Horizon roll: min/max
+    const horizons = samples.map((s) => s.camHorizonRollDeg);
+    const minHorizonRollDeg = Math.min(...horizons);
+    const maxHorizonRollDeg = Math.max(...horizons);
+
+    const maxDistFromCentreM = Math.max(...samples.map((s) => s.distFromCentreM));
+    const offRoadFrames = samples.filter((s) => s.distFromCentreM > 4.0).length;
 
     let geomStr = `L=${sec.length?.toFixed(0)}m`;
     if (sec.type === 'RIGHT' || sec.type === 'LEFT') {
@@ -325,17 +453,21 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
       durationS,
       meanMph,
       maxMph,
-      maxLatG,
-      signedLatG,
+      signedLatGMean,
+      signedLatGPeak,
+      latG95thPercentile,
       maxSlipDeg,
-      maxRollDeg,
-      signedRollDeg,
+      signedRollMeanDeg,
+      peakAbsRollDeg,
+      minPitchDeg,
       maxPitchDeg,
-      meanRearDroopM,
       maxRearDroopM,
+      maxFrontDroopM,
       maxCamOffAxisDeg,
+      minHorizonRollDeg,
       maxHorizonRollDeg,
       maxDistFromCentreM,
+      offRoadFrames,
     });
   }
 
@@ -343,13 +475,13 @@ async function runSimulation(pass2HandbrakeHairpin: boolean): Promise<SimResult>
 }
 
 function printTable(title: string, metrics: SectionMetrics[]): void {
-  console.log(`\n========================================================================================================================`);
+  console.log(`\n================================================================================================================================================`);
   console.log(`${title}`);
-  console.log(`========================================================================================================================`);
+  console.log(`================================================================================================================================================`);
   console.log(
-    `Sec  Type      Geom            Dur(s)  MeanMph  MaxMph  LatG(g)  SignedG  Roll(°) SignedRoll Pitch(°) Droop(m) MaxDrp(m) CamOff(°) Horiz(°) MaxDist(m)`
+    `Sec  Type      Geom            Dur(s)  MeanMph  MaxMph  SignedG(Mean/Peak)  |G_95|  |Slip|°  Roll(Mean/Pk°)   Pitch(Min/Max°)  Drp(R/F m)  CamOff°  Horiz(Min/Max°) MaxDist(m) OffRd`
   );
-  console.log(`------------------------------------------------------------------------------------------------------------------------`);
+  console.log(`------------------------------------------------------------------------------------------------------------------------------------------------`);
   for (const m of metrics) {
     const secStr = String(m.id).padStart(3);
     const typeStr = m.type.padEnd(8);
@@ -357,39 +489,104 @@ function printTable(title: string, metrics: SectionMetrics[]): void {
     const durStr = m.durationS.toFixed(1).padStart(6);
     const meanMphStr = m.meanMph.toFixed(1).padStart(7);
     const maxMphStr = m.maxMph.toFixed(1).padStart(7);
-    const latGStr = m.maxLatG.toFixed(2).padStart(7);
-    const signedGStr = (m.signedLatG >= 0 ? '+' : '') + m.signedLatG.toFixed(2).padStart(6);
-    const rollStr = m.maxRollDeg.toFixed(2).padStart(7);
-    const signedRollStr = (m.signedRollDeg >= 0 ? '+' : '') + m.signedRollDeg.toFixed(2).padStart(7);
-    const pitchStr = m.maxPitchDeg.toFixed(2).padStart(8);
-    const droopStr = m.meanRearDroopM.toFixed(3).padStart(8);
-    const maxDrpStr = m.maxRearDroopM.toFixed(3).padStart(9);
-    const offAxisStr = m.maxCamOffAxisDeg.toFixed(1).padStart(9);
-    const horizStr = m.maxHorizonRollDeg.toFixed(2).padStart(8);
-    const distStr = m.maxDistFromCentreM.toFixed(2).padStart(9);
+    const gMeanStr = (m.signedLatGMean >= 0 ? '+' : '') + m.signedLatGMean.toFixed(2);
+    const gPeakStr = (m.signedLatGPeak >= 0 ? '+' : '') + m.signedLatGPeak.toFixed(2);
+    const gCombined = `${gMeanStr}/${gPeakStr}`.padStart(18);
+    const g95Str = m.latG95thPercentile.toFixed(2).padStart(6);
+    const slipStr = m.maxSlipDeg.toFixed(1).padStart(7);
+    const rMeanStr = (m.signedRollMeanDeg >= 0 ? '+' : '') + m.signedRollMeanDeg.toFixed(1);
+    const rPkStr = m.peakAbsRollDeg.toFixed(1);
+    const rCombined = `${rMeanStr}/${rPkStr}`.padStart(14);
+    const pMinStr = (m.minPitchDeg >= 0 ? '+' : '') + m.minPitchDeg.toFixed(1);
+    const pMaxStr = (m.maxPitchDeg >= 0 ? '+' : '') + m.maxPitchDeg.toFixed(1);
+    const pCombined = `${pMinStr}/${pMaxStr}`.padStart(15);
+    const droopRStr = m.maxRearDroopM.toFixed(3);
+    const droopFStr = m.maxFrontDroopM.toFixed(3);
+    const droopCombined = `${droopRStr}/${droopFStr}`.padStart(13);
+    const offAxisStr = m.maxCamOffAxisDeg.toFixed(1).padStart(7);
+    const hMinStr = (m.minHorizonRollDeg >= 0 ? '+' : '') + m.minHorizonRollDeg.toFixed(1);
+    const hMaxStr = (m.maxHorizonRollDeg >= 0 ? '+' : '') + m.maxHorizonRollDeg.toFixed(1);
+    const hCombined = `${hMinStr}/${hMaxStr}`.padStart(14);
+    const distStr = m.maxDistFromCentreM.toFixed(2).padStart(10);
+    const offRdStr = String(m.offRoadFrames).padStart(5);
 
     console.log(
-      `${secStr}  ${typeStr}  ${geomStr} ${durStr}  ${meanMphStr}  ${maxMphStr}  ${latGStr}  ${signedGStr}  ${rollStr} ${signedRollStr} ${pitchStr} ${droopStr} ${maxDrpStr}  ${offAxisStr}  ${horizStr}  ${distStr}`
+      `${secStr}  ${typeStr}  ${geomStr} ${durStr}  ${meanMphStr}  ${maxMphStr}  ${gCombined}  ${g95Str}  ${slipStr}  ${rCombined}  ${pCombined}  ${droopCombined}  ${offAxisStr}  ${hCombined}  ${distStr}  ${offRdStr}`
     );
   }
-  console.log(`========================================================================================================================\n`);
+  console.log(`================================================================================================================================================\n`);
 }
 
-async function main() {
+function writeTraceCsv(filename: string, allSamples: TelemetrySample[]): void {
+  const header = [
+    'pass', 't', 'frame', 's', 'section', 'speed_mph', 'steer', 'throttle', 'brake', 'handbrake',
+    'latG', 'smoothedLatG', 'slip_deg', 'yaw_deg', 'roll_deg', 'pitch_deg',
+    'droop_FL', 'droop_FR', 'droop_RL', 'droop_RR',
+    'Fz_FL', 'Fz_FR', 'Fz_RL', 'Fz_RR',
+    'slipRatio_FL', 'slipRatio_FR', 'slipRatio_RL', 'slipRatio_RR',
+    'camOff_deg', 'horizon_deg', 'dist_to_centreline', 'x', 'y', 'z'
+  ].join(',');
+
+  const rows = allSamples.map(s => [
+    s.pass,
+    s.t.toFixed(4),
+    s.frame,
+    s.s.toFixed(3),
+    s.section,
+    s.mph.toFixed(2),
+    s.steer.toFixed(4),
+    s.throttle.toFixed(3),
+    s.brake.toFixed(3),
+    s.handbrake ? 1 : 0,
+    s.latG.toFixed(4),
+    s.smoothedLatG.toFixed(4),
+    s.slipDeg.toFixed(3),
+    s.yawDeg.toFixed(3),
+    s.rollDeg.toFixed(3),
+    s.pitchDeg.toFixed(3),
+    s.droopFL.toFixed(4),
+    s.droopFR.toFixed(4),
+    s.droopRL.toFixed(4),
+    s.droopRR.toFixed(4),
+    s.fzFL.toFixed(1),
+    s.fzFR.toFixed(1),
+    s.fzRL.toFixed(1),
+    s.fzRR.toFixed(1),
+    s.slipRatioFL.toFixed(4),
+    s.slipRatioFR.toFixed(4),
+    s.slipRatioRL.toFixed(4),
+    s.slipRatioRR.toFixed(4),
+    s.camOffAxisDeg.toFixed(2),
+    s.camHorizonRollDeg.toFixed(3),
+    s.distFromCentreM.toFixed(4),
+    s.x.toFixed(4),
+    s.y.toFixed(4),
+    s.z.toFixed(4)
+  ].join(','));
+
+  fs.writeFileSync(filename, [header, ...rows].join('\n') + '\n');
+}
+
+async function runFullMeasurementSuite(): Promise<void> {
   await RAPIER.init();
 
-  // Run steer-sign calibration
+  // Run steer-sign calibration (Part B1)
   await runCalibration();
 
   console.log('Running Lane 3 Curves Autopilot Measurement Suite...');
   console.log('Pass 1: Full Course (Normal Autopilot Pure Pursuit driving all 10 sections)');
-  const pass1 = await runSimulation(false);
+  const pass1 = await runSimulation(1, false, true);
   printTable('PASS 1: FULL COURSE REFERENCE RUN', pass1.metrics);
 
   console.log('Pass 2: Section 6 Hairpin Handbrake Entry (0.6s handbrake at corner entry)');
-  const pass2 = await runSimulation(true);
+  const pass2 = await runSimulation(2, true, false);
   const sec6Pass2 = pass2.metrics.filter((m) => m.id === 6);
   printTable('PASS 2: SECTION 6 HAIRPIN HANDBRAKE TEST', sec6Pass2);
+
+  // Write lane3_curves_trace.csv
+  const combinedSamples = [...pass1.allSamples, ...pass2.allSamples];
+  writeTraceCsv('lane3_curves_trace.csv', combinedSamples);
+  console.log(`Saved ${combinedSamples.length} frames to lane3_curves_trace.csv`);
 
   // Analysis of the 6 questions from printed numbers
   const p1 = pass1.metrics;
@@ -399,18 +596,17 @@ async function main() {
   const s6P2 = sec6Pass2[0];
 
   // Question 1: R=120 Right sweeper roll sign vs latG sign
-  const q1Opposite = Math.sign(s2.signedLatG) !== Math.sign(s2.signedRollDeg);
+  const q1Opposite = Math.sign(s2.signedLatGMean) !== Math.sign(s2.signedRollMeanDeg);
 
   // Question 2: R=60 Left corner roll sign vs latG sign
-  const q2Opposite = Math.sign(s4.signedLatG) !== Math.sign(s4.signedRollDeg);
+  const q2Opposite = Math.sign(s4.signedLatGMean) !== Math.sign(s4.signedRollMeanDeg);
 
   // Question 3: Chicane sign change delay (Sections 8 & 9)
-  // Find frames in chicane (s between 1040 and 1170)
   const chicaneSamples = pass1.allSamples.filter((s) => s.s >= 1042 && s.s <= 1168);
   let latGZeroIndex = -1;
   let rollZeroIndex = -1;
   for (let i = 1; i < chicaneSamples.length; i++) {
-    if (latGZeroIndex === -1 && Math.sign(chicaneSamples[i].latG) !== Math.sign(chicaneSamples[i - 1].latG)) {
+    if (latGZeroIndex === -1 && Math.sign(chicaneSamples[i].smoothedLatG) !== Math.sign(chicaneSamples[i - 1].smoothedLatG)) {
       latGZeroIndex = i;
     }
     if (rollZeroIndex === -1 && Math.sign(chicaneSamples[i].rollDeg) !== Math.sign(chicaneSamples[i - 1].rollDeg)) {
@@ -434,39 +630,39 @@ async function main() {
     maxStepHorizon = Math.max(maxStepHorizon, Math.abs(pass1.allSamples[i].camHorizonRollDeg - pass1.allSamples[i - 1].camHorizonRollDeg));
   }
 
-  // Question 6: Did autopilot stay within 5m of centreline in every section?
+  // Question 6: Did autopilot stay within 3.2m of centreline in every section? (Road-edge limit)
   const maxDistAll = Math.max(...p1.map((m) => m.maxDistFromCentreM));
-  const within5m = maxDistAll <= 5.0;
+  const within3_2m = maxDistAll <= 3.2;
 
   console.log('CORNER MEASUREMENT SUMMARY (from printed numbers only):');
-  console.log(`(1) R=120 right sweeper (Sec 2): latG=${s2.signedLatG.toFixed(2)}g, roll=${s2.signedRollDeg.toFixed(2)}° -> roll sign opposite to latG sign: ${q1Opposite ? 'YES' : 'NO'}`);
-  console.log(`(2) R=60 left corner (Sec 4): latG=${s4.signedLatG.toFixed(2)}g, roll=${s4.signedRollDeg.toFixed(2)}° -> roll sign opposite to latG sign: ${q2Opposite ? 'YES' : 'NO'}`);
+  console.log(`(1) R=120 right sweeper (Sec 2): latG=${(s2.signedLatGMean >= 0 ? '+' : '') + s2.signedLatGMean.toFixed(2)}g, roll=${(s2.signedRollMeanDeg >= 0 ? '+' : '') + s2.signedRollMeanDeg.toFixed(2)}° -> roll sign opposite to latG sign: ${q1Opposite ? 'YES' : 'NO'}`);
+  console.log(`(2) R=60 left corner (Sec 4): latG=${(s4.signedLatGMean >= 0 ? '+' : '') + s4.signedLatGMean.toFixed(2)}g, roll=${(s4.signedRollMeanDeg >= 0 ? '+' : '') + s4.signedRollMeanDeg.toFixed(2)}° -> roll sign opposite to latG sign: ${q2Opposite ? 'YES' : 'NO'}`);
   console.log(`(3) Chicane (Sec 8->9): roll changes sign between arcs: ${chicaneRollSignChanges ? 'YES' : 'NO'}, delayed by ${frameDelay} frame(s) after latG sign change`);
   console.log(`(4) Hairpin rear droop max: without handbrake = ${droopNoHB.toFixed(3)} m (${(droopNoHB * 100).toFixed(1)} cm), with handbrake = ${droopWithHB.toFixed(3)} m (${(droopWithHB * 100).toFixed(1)} cm)`);
   console.log(`(5) Maximum per-frame change anywhere: roll = ${maxStepRoll.toFixed(3)}°/frame, pitch = ${maxStepPitch.toFixed(3)}°/frame, horizon = ${maxStepHorizon.toFixed(3)}°/frame`);
-  console.log(`(6) Autopilot stayed within 5.0m of centreline in every section: ${within5m ? 'YES' : 'NO'} (max across all sections: ${maxDistAll.toFixed(2)} m)`);
+  console.log(`(6) Autopilot stayed within 3.2m of centreline in every section: ${within3_2m ? 'YES' : 'NO'} (max across all sections: ${maxDistAll.toFixed(2)} m)`);
   console.log('');
 
   let failed = false;
   for (const m of [...p1, ...sec6Pass2]) {
-    if (m.maxDistFromCentreM > WORLD_SPEC.containment.maxDistFromCentreline) {
+    if (m.maxDistFromCentreM > 3.2) {
       console.error(
-        `[FAIL] Section ${m.id} exceeded containment: maxDist = ${m.maxDistFromCentreM.toFixed(2)}m > ${WORLD_SPEC.containment.maxDistFromCentreline}m`
+        `[FAIL] Section ${m.id} exceeded road edge: maxDist = ${m.maxDistFromCentreM.toFixed(2)}m > 3.2m`
       );
       failed = true;
     }
   }
 
   if (failed) {
-    console.error('MEASURE CURVES RESULT: FAILED');
+    console.error('MEASURE CURVES RESULT: FAILED (exceeded road edge limit of 3.2m)');
     process.exit(1);
   } else {
-    console.log('MEASURE CURVES RESULT: ALL SECTIONS PASSED CONTAINMENT (max dist <= 7.1m)');
+    console.log('MEASURE CURVES RESULT: ALL SECTIONS PASSED (max dist <= 3.2m)');
     process.exit(0);
   }
 }
 
-main().catch((err) => {
+runFullMeasurementSuite().catch((err) => {
   console.error('Error during curve measurement:', err);
   process.exit(1);
 });
