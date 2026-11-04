@@ -259,15 +259,15 @@ export class CockpitController {
     // Slim 12mm tube radius for clean visibility
     const tubeRadius = 0.012;
 
-    // 1. Top Windshield Transverse Tube (running across upper windshield header)
+    // 1. Top Windshield Transverse Tube (running flush along roof header)
     const topBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, 1.22, 8), tubeMat);
-    topBar.position.set(0, 0.85, 0.38);
+    topBar.position.set(0, 0.875, 0.22);
     topBar.rotation.z = Math.PI / 2;
     this.group.add(topBar);
 
     // 2. Windshield Header Diagonal Crossbar (WRC signature element tucked high against roof header)
-    const p1 = new THREE.Vector3(-0.58, 0.85, 0.38);
-    const p2 = new THREE.Vector3(0.42, 0.83, 0.40);
+    const p1 = new THREE.Vector3(-0.58, 0.875, 0.22);
+    const p2 = new THREE.Vector3(0.42, 0.875, 0.20);
     const diagVec = p2.clone().sub(p1);
     const diagLen = diagVec.length();
 
@@ -285,8 +285,8 @@ export class CockpitController {
     }
 
     // 3. Left A-Pillar Down-tube
-    const aLeftP1 = new THREE.Vector3(-0.58, 0.85, 0.38);
-    const aLeftP2 = new THREE.Vector3(-0.62, 0.40, 0.54);
+    const aLeftP1 = new THREE.Vector3(-0.58, 0.875, 0.22);
+    const aLeftP2 = new THREE.Vector3(-0.64, 0.40, 0.54);
     const aLeftVec = aLeftP2.clone().sub(aLeftP1);
     const aLeftBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, aLeftVec.length(), 8), tubeMat);
     aLeftBar.position.copy(aLeftP1).lerp(aLeftP2, 0.5);
@@ -294,8 +294,8 @@ export class CockpitController {
     this.group.add(aLeftBar);
 
     // 4. Right A-Pillar Down-tube
-    const aRightP1 = new THREE.Vector3(0.58, 0.85, 0.38);
-    const aRightP2 = new THREE.Vector3(0.62, 0.40, 0.54);
+    const aRightP1 = new THREE.Vector3(0.58, 0.875, 0.22);
+    const aRightP2 = new THREE.Vector3(0.64, 0.40, 0.54);
     const aRightVec = aRightP2.clone().sub(aRightP1);
     const aRightBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, aRightVec.length(), 8), tubeMat);
     aRightBar.position.copy(aRightP1).lerp(aRightP2, 0.5);
@@ -495,9 +495,9 @@ export class CockpitController {
       map: paceTex,
     });
 
-    const clipBoard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.014, 0.28), notesMat);
-    clipBoard.position.set(0.18, 0.42, 0.32);
-    clipBoard.rotation.set(0.35, -0.20, 0.10);
+    const clipBoard = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.014, 0.30), notesMat);
+    clipBoard.position.set(0.34, 0.46, 0.34);
+    clipBoard.rotation.set(-0.25, -0.35, 0.10);
     this.group.add(clipBoard);
   }
 
@@ -597,6 +597,26 @@ export class CockpitController {
     const badge = new THREE.Mesh(new THREE.CircleGeometry(0.026, 16), badgeMat);
     badge.position.set(0, 0, 0.010);
     this.steeringWheelGroup.add(badge);
+
+    // 3b. WRC Steering Wheel Motorsport Push Buttons (Red, Blue, Green, Yellow)
+    const btnColors = [0xef4444, 0x3b82f6, 0x22c55e, 0xfacc15];
+    const btnCoords = [
+      { x: -0.065, y: 0.035 }, // Upper left (Red)
+      { x: -0.065, y: -0.030 }, // Lower left (Blue)
+      { x: 0.065, y: 0.035 },  // Upper right (Green)
+      { x: 0.065, y: -0.030 }   // Lower right (Yellow)
+    ];
+    btnCoords.forEach((coord, idx) => {
+      const btnMat = new THREE.MeshStandardMaterial({
+        color: btnColors[idx],
+        roughness: 0.4,
+        metalness: 0.2,
+      });
+      const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.012, 8), btnMat);
+      btn.position.set(coord.x, coord.y, 0.012);
+      btn.rotation.x = Math.PI / 2;
+      this.steeringWheelGroup.add(btn);
+    });
 
     // 4. Rally yellow top centering stripe at 12 o'clock
     const stripe = new THREE.Mesh(
@@ -802,19 +822,25 @@ export class CockpitController {
    */
   private buildDriverRig(): void {
     const suitMat = new THREE.MeshStandardMaterial({
-      color: 0x1e3a8a, // Rally navy blue racing suit
-      roughness: 0.8,
-      flatShading: true,
-    });
-
-    const gloveMat = new THREE.MeshStandardMaterial({
-      color: 0x18181b, // Black suede rally glove
+      color: 0x141416, // Matte black Alpinestars motorsport racing suit
       roughness: 0.85,
       flatShading: true,
     });
 
+    const suitStripeMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15, // Bright yellow Alpinestars rally livery stripe
+      roughness: 0.4,
+      flatShading: true,
+    });
+
+    const gloveMat = new THREE.MeshStandardMaterial({
+      color: 0x111113, // Suede black racing glove
+      roughness: 0.90,
+      flatShading: true,
+    });
+
     const gloveAccentMat = new THREE.MeshStandardMaterial({
-      color: 0xeab308, // Bright yellow high-grip silicone accents
+      color: 0xeab308, // Yellow high-grip silicone palm pads
       roughness: 0.4,
       flatShading: true,
     });
@@ -866,6 +892,12 @@ export class CockpitController {
     // Left Arm Setup (Sleeve)
     this.leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.034, this.upperArmLen, 8), suitMat);
     this.leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.030, this.forearmLen, 8), suitMat);
+    
+    // Add racing stripe along left forearm
+    const leftArmStripe = new THREE.Mesh(new THREE.BoxGeometry(0.012, this.forearmLen * 0.85, 0.008), suitStripeMat);
+    leftArmStripe.position.set(0.032, 0, 0);
+    this.leftForearm.add(leftArmStripe);
+
     this.group.add(this.leftUpperArm);
     this.group.add(this.leftForearm);
 
@@ -876,6 +908,12 @@ export class CockpitController {
     // Right Arm Setup (Sleeve)
     this.rightUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.034, this.upperArmLen, 8), suitMat);
     this.rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.030, this.forearmLen, 8), suitMat);
+
+    // Add racing stripe along right forearm
+    const rightArmStripe = new THREE.Mesh(new THREE.BoxGeometry(0.012, this.forearmLen * 0.85, 0.008), suitStripeMat);
+    rightArmStripe.position.set(-0.032, 0, 0);
+    this.rightForearm.add(rightArmStripe);
+
     this.group.add(this.rightUpperArm);
     this.group.add(this.rightForearm);
 
@@ -894,34 +932,39 @@ export class CockpitController {
     isLeft: boolean
   ): void {
     // 1. Palm / main hand body
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.038, 0.055), mainMat);
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.036, 0.052), mainMat);
     group.add(palm);
 
     // 2. Curled gripping fingers wrapping around wheel rim
-    const fingers = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.044, 8), mainMat);
-    fingers.position.set(0, -0.015, 0.020);
+    const fingers = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.042, 8), mainMat);
+    fingers.position.set(0, -0.014, 0.018);
     fingers.rotation.x = Math.PI / 2;
     group.add(fingers);
 
     // 3. Thumb hooked onto spoke/front face
-    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.007, 0.030, 8), mainMat);
-    thumb.position.set(isLeft ? 0.020 : -0.020, 0.011, 0.011);
+    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.006, 0.028, 8), mainMat);
+    thumb.position.set(isLeft ? 0.018 : -0.018, 0.010, 0.010);
     thumb.rotation.z = isLeft ? -0.45 : 0.45;
     group.add(thumb);
 
-    // 4. Yellow silicone grip pad accent (Reference Images 1 & 2)
-    const gripPatch = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.007, 0.034), accentMat);
-    gripPatch.position.set(0, 0.018, 0);
+    // 4. Yellow silicone grip pad accent (matching Alpinestars reference)
+    const gripPatch = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.006, 0.030), accentMat);
+    gripPatch.position.set(0, 0.016, 0);
     group.add(gripPatch);
 
-    // 5. White motorsport wrist cuff
+    // 5. Motorsport elastic wrist cuff (dark charcoal matching glove with gold branding tab)
+    const cuffMat = new THREE.MeshStandardMaterial({ color: 0x1f1f23, roughness: 0.8 });
     const cuff = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.032, 0.032, 0.018, 8),
-      new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 })
+      new THREE.CylinderGeometry(0.030, 0.030, 0.018, 8),
+      cuffMat
     );
-    cuff.position.set(0, 0, -0.030);
+    cuff.position.set(0, 0, -0.028);
     cuff.rotation.x = Math.PI / 2;
     group.add(cuff);
+
+    const cuffTab = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.018, 0.006), accentMat);
+    cuffTab.position.set(isLeft ? -0.026 : 0.026, 0, -0.028);
+    group.add(cuffTab);
   }
 
   /**

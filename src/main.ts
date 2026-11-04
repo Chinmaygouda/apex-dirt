@@ -2,21 +2,17 @@ import * as THREE from 'three';
 import { PhysicsWorld } from './physics/PhysicsWorld';
 import { CollisionImpulseDispatcher } from './physics/CollisionImpulseDispatcher';
 import { InputManager } from './core/InputManager';
-import { SandboxEnvironment } from './world/SandboxEnvironment';
 import { CustomRallyVehicle, RALLY_LIVERIES } from './vehicles/CustomRallyVehicle';
-import { ChaseCamera } from './core/ChaseCamera';
 import { CameraManager } from './core/CameraManager';
 import { CockpitController } from './vehicles/CockpitController';
 import { HeadlightController } from './vehicles/HeadlightController';
 import { DayNightCycleController } from './world/DayNightCycleController';
-import { WildlifeCrossingManager } from './world/WildlifeCrossingManager';
 import { VehicleDamageController } from './vehicles/VehicleDamageController';
-import { CoDriverSystem } from './gameplay/CoDriverSystem';
 import { TelemetryHUD } from './ui/TelemetryHUD';
 import { VehicleDebugOverlay } from './ui/VehicleDebugOverlay';
 import { TuningPanel } from './ui/TuningPanel';
 import { THREE_PALETTE } from './core/Constants';
-import { RallyStageWorld, STAGE_PALETTE } from './world/RallyStageWorld';
+import { ProvingGroundWorld } from './world/ProvingGroundWorld';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
 
 async function initGame() {
@@ -35,17 +31,17 @@ async function initGame() {
   renderer.toneMappingExposure = 1.05;
   document.body.appendChild(renderer.domElement);
 
-  // 2. Scene Setup: Soft Blue Horizon Haze & Cascaded Atmosphere
+  // 2. Scene Setup: Clean Horizon for Vehicle Dynamics Proving Ground
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(STAGE_PALETTE.SKY_HORIZON);
-  scene.fog = new THREE.FogExp2(new THREE.Color(STAGE_PALETTE.FOG_HAZE), 0.0018);
+  scene.background = new THREE.Color(0x94a3b8);
+  scene.fog = new THREE.FogExp2(new THREE.Color(0x94a3b8), 0.0008);
 
-  // 3. Lighting: Low-Angle Directional Sun for dramatic tree shadows across road
-  const hemiLight = new THREE.HemisphereLight(new THREE.Color(STAGE_PALETTE.SKY_ZENITH), new THREE.Color(STAGE_PALETTE.ROAD_DIRT_SHADOW), 0.85);
+  // 3. Lighting: Crisp Proving Ground Directional Sun
+  const hemiLight = new THREE.HemisphereLight(new THREE.Color(0xe2e8f0), new THREE.Color(0x334155), 0.95);
   scene.add(hemiLight);
 
-  const sunLight = new THREE.DirectionalLight(new THREE.Color(STAGE_PALETTE.SUN_WARMTH), 2.2);
-  sunLight.position.set(65, 40, -50);
+  const sunLight = new THREE.DirectionalLight(new THREE.Color(0xffffff), 2.4);
+  sunLight.position.set(50, 60, -40);
   sunLight.castShadow = true;
   sunLight.shadow.mapSize.width = 2048;
   sunLight.shadow.mapSize.height = 2048;
@@ -61,35 +57,34 @@ async function initGame() {
   scene.add(sunLight);
   scene.add(sunLight.target);
 
-  // 4. Procedural Low-Poly Sky & Clouds
+  // 4. Procedural Low-Poly Drifting Sky Clouds
   createSkyAndClouds(scene);
 
   // 5. Physics Initialization (Rapier3D WASM)
   const physics = new PhysicsWorld();
   await physics.init();
 
-  // 6. World Sandbox Environment & 1.6+ km Spline Rally Stage
-  const sandbox = new SandboxEnvironment(scene, physics);
-  const rallyWorld = new RallyStageWorld(scene, physics);
+  // 6. World Proving Ground: Flat 2,000m x 2,000m Test Plane with Checkerboard Grid
+  // 0 trees, 0 green terrain meshes, 0 obstacle bodies
+  const provingGround = new ProvingGroundWorld(scene, physics);
 
   // 7. Custom Tyre Model Vehicle
   const vehicle = new CustomRallyVehicle(scene, physics);
-  vehicle.worldSurfaceQuery = (x, z) => rallyWorld.getSurfaceAt(x, z);
+  vehicle.worldSurfaceQuery = (x, z) => provingGround.getSurfaceAt(x, z);
 
-  // 7b. Vehicle Effects (Phase 2: exhaust pops, tyre smoke, dust, persistent tracks)
+  // 7b. Vehicle Effects (exhaust pops, tyre smoke, dust particles, skid marks)
   const { VehicleEffects } = await import('./effects/VehicleEffects');
   const vehicleEffects = new VehicleEffects(scene, vehicle, physics);
 
-  // 7c. Stage Manager & 20 Checkpoint Gates (Phase 4)
-  const { StageManager } = await import('./gameplay/StageManager');
-  const stageManager = new StageManager(scene, rallyWorld, vehicle);
+  // 7c. Vehicle Dynamics Test Manager (0-60 timer, distance tracking, 0 gate post clutter)
+  const { ProvingGroundManager } = await import('./gameplay/ProvingGroundManager');
+  const stageManager = new ProvingGroundManager(scene, vehicle);
 
-  // 7d. Procedural Rally Audio Engine (Phase 5)
+  // 7d. Procedural Rally Audio Engine
   const { RallyAudioEngine } = await import('./audio/RallyAudioEngine');
   const audioEngine = new RallyAudioEngine();
   vehicleEffects.onExhaustPop = () => audioEngine.triggerExhaustPop();
 
-  // 8. Chase Camera
   // 8. Multi-Camera Manager (Chase, Cockpit FPV, Hood)
   const camera = new CameraManager(window.innerWidth / window.innerHeight);
 
@@ -102,16 +97,10 @@ async function initGame() {
   // 8d. Dynamic Day/Night Lighting Cycle
   const dayNightCycle = new DayNightCycleController(scene, sunLight, hemiLight);
 
-  // 8e. Wildlife Crossing Manager
-  const wildlifeCrossing = new WildlifeCrossingManager(scene, rallyWorld);
-
-  // 8f. Vehicle Damage Controller (localized crumple + detachable debris)
+  // 8e. Vehicle Damage Controller (localized crumple + detachable debris)
   const { CollisionImpulseDispatcher } = await import('./physics/CollisionImpulseDispatcher');
   const collisionDispatcher = new CollisionImpulseDispatcher(physics);
   collisionDispatcher.registerCarCollider(vehicle.chassisCollider);
-  for (const item of rallyWorld.roadsideColliders) {
-    collisionDispatcher.registerEntity(item.collider, item.entity);
-  }
   const damageController = new VehicleDamageController(scene, vehicle, physics, collisionDispatcher);
 
   // Wire Gamepad Haptics (Collision Dual-Rumble)
@@ -119,9 +108,6 @@ async function initGame() {
     const intensity = Math.min(1.0, event.impulseMagnitude / 9000);
     inputManager.playRumble(intensity, 0.5, 200);
   });
-
-  // 8g. Co-Driver Pace Notes System
-  const coDriver = new CoDriverSystem(rallyWorld, vehicle);
 
   // 9. Input & UI with Demo Automation
   const inputManager = new InputManager();
@@ -213,26 +199,19 @@ async function initGame() {
 
   // Deterministic Video Recorder
   const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
-  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera.chaseCam, renderer, sunLight, stageManager);
+  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera.chaseCam, renderer, sunLight, stageManager as any);
   (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
   (window as any).renderKeyboardVideo = () => videoRecorder.renderClipKeyboardFeel();
   (window as any).stageManager = stageManager;
   (window as any).restartStage = () => stageManager.restart();
   (window as any).cameraManager = camera;
   (window as any).cockpitController = cockpit;
-  (window as any).headlightController = headlightController;
-  (window as any).dayNightCycle = dayNightCycle;
-  (window as any).wildlifeCrossing = wildlifeCrossing;
-  (window as any).damageController = damageController;
-  (window as any).coDriver = coDriver;
-  (window as any).audioEngine = audioEngine;
-  (window as any).cameraManager = camera;
   (window as any).cockpit = cockpit;
   (window as any).headlightController = headlightController;
   (window as any).dayNightCycle = dayNightCycle;
-  (window as any).wildlifeCrossing = wildlifeCrossing;
   (window as any).damageController = damageController;
-  (window as any).coDriver = coDriver;
+  (window as any).audioEngine = audioEngine;
+  (window as any).provingGround = provingGround;
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -406,10 +385,6 @@ async function initGame() {
     cockpit.setCockpitViewMode(isCockpit);
     cockpit.update(frameDt, telemetry, inputs.steer);
     dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
-    if (vehicle.chassisMesh) {
-      wildlifeCrossing.update(frameDt, vehicle.chassisMesh.position);
-    }
-    coDriver.update(frameDt);
     if (!(window as any).__debugFreeCam) {
       camera.update(vehicle, frameDt, inputs.steer);
     }
@@ -422,12 +397,9 @@ async function initGame() {
       inputManager.playRumble(0.06, Math.min(0.5, Math.abs(vehicle.driftAngleDeg) / 45), 70);
     }
 
-
     if (inputs.reset) {
       stageManager.restart();
       damageController.reset();
-      wildlifeCrossing.reset();
-      coDriver.reset();
     }
     stageManager.update(frameDt);
 
