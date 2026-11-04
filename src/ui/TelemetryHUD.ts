@@ -829,6 +829,16 @@ export class TelemetryHUD {
     if (this.cameraBadge) {
       this.cameraBadge.textContent = `🎥 ${mode} [C]`;
     }
+    const speedoWrap = this.container.querySelector('.speedo-wrap') as HTMLElement;
+    if (speedoWrap) {
+      // In Cockpit FPV, hide the 2D speedometer canvas dial so it does not obstruct the view!
+      // The 3D dashboard has working illuminated analog speedometer, tachometer, and gear display.
+      speedoWrap.style.display = mode === 'COCKPIT_FPV' ? 'none' : 'block';
+    }
+    const controlsPanel = this.container.querySelector('.controls-panel') as HTMLElement;
+    if (controlsPanel) {
+      controlsPanel.style.opacity = mode === 'COCKPIT_FPV' ? '0.35' : '1.0';
+    }
   }
 
   public setHeadlights(on: boolean): void {
