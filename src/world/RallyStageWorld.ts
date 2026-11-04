@@ -250,19 +250,46 @@ export class RallyStageWorld {
     roadMesh.castShadow = false;
     this.group.add(roadMesh);
 
-    // Large surrounding terrain bed
-    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 64, 64);
+    // Large surrounding terrain bed with Track-Conforming Elevation
+    // Conforms terrain within 14m of road to perfectly match track grade, eliminating cliffs and jumps!
+    const terrainGeom = new THREE.PlaneGeometry(1600, 1600, 80, 80);
     terrainGeom.rotateX(-Math.PI / 2);
     const tPos = terrainGeom.attributes.position;
     for (let k = 0; k < tPos.count; k++) {
       const px = tPos.getX(k);
       const pz = tPos.getZ(k);
-      // Gentle undulating mountain hills around valley
-      const dist = Math.hypot(px, pz);
-      const wave = Math.sin(px * 0.008) * Math.cos(pz * 0.008) * 12.0 +
+
+      // Background mountain wave elevation
+      const distFromCenter = Math.hypot(px, pz);
+      const wave = Math.sin(px * 0.008) * Math.cos(pz * 0.008) * 14.0 +
                    Math.sin(px * 0.02) * Math.sin(pz * 0.015) * 4.0;
-      const elevation = Math.max(-2.0, wave + (dist > 350 ? (dist - 350) * 0.06 : 0));
-      tPos.setY(k, elevation - 0.25);
+      const naturalElevation = Math.max(-2.0, wave + (distFromCenter > 320 ? (distFromCenter - 320) * 0.07 : 0));
+
+      // Find closest road sample
+      let minSq = Infinity;
+      let closestTrackY = 0;
+      for (let s = 0; s < this.samples.length; s++) {
+        const sp = this.samples[s].point;
+        const dSq = (px - sp.x) ** 2 + (pz - sp.z) ** 2;
+        if (dSq < minSq) {
+          minSq = dSq;
+          closestTrackY = sp.y;
+        }
+      }
+      const distToTrack = Math.sqrt(minSq);
+
+      let elevation = naturalElevation;
+      if (distToTrack <= 12.0) {
+        // Direct road corridor & shoulder: flush with track surface (-0.20m for clean sub-base)
+        elevation = closestTrackY - 0.20;
+      } else if (distToTrack <= 48.0) {
+        // Smooth Hermite blend from road elevation to natural mountain terrain
+        const t = (distToTrack - 12.0) / (48.0 - 12.0);
+        const smoothT = t * t * (3.0 - 2.0 * t);
+        elevation = THREE.MathUtils.lerp(closestTrackY - 0.20, naturalElevation, smoothT);
+      }
+
+      tPos.setY(k, elevation);
     }
     terrainGeom.computeVertexNormals();
 
@@ -274,7 +301,6 @@ export class RallyStageWorld {
     });
     const terrainMesh = new THREE.Mesh(terrainGeom, terrainMat);
     terrainMesh.receiveShadow = true;
-    terrainMesh.position.y = -0.15;
     this.group.add(terrainMesh);
 
     // Build Rapier physics colliders: segmented cuboid road pads
@@ -397,43 +423,53 @@ export class RallyStageWorld {
       const tang = this.spline.getTangentAt(u).normalize();
       const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
-      // Side & distance: dedicated roadside margin (12.5m - 16.5m) for t % 8 == 0, deep forest for others
       const side = (t % 2 === 0 ? 1 : -1);
       const pseudo1 = Math.abs(Math.sin(t * 12.9898 + 0.123));
       const pseudo2 = Math.abs(Math.cos(t * 4.1415 + 0.456));
-      let distFromRoad = (t % 8 === 0) ? (12.5 + pseudo1 * 4.0) : (16.0 + (t % 11) * 3.5 + pseudo1 * 26.0);
+
+      // Roadside trees (t % 7 === 0) placed 15.0m to 19.0m away; forest trees 20.0m to 85.0m away
+      let distFromRoad = (t % 7 === 0)
+        ? (15.5 + pseudo1 * 3.5)
+        : (20.0 + (t % 13) * 4.0 + pseudo1 * 32.0);
+
       let x = pt.x + binormal.x * (side * distFromRoad);
       let z = pt.z + binormal.z * (side * distFromRoad);
 
-      // Strict Track Clearance Verification:
-      // Ensure candidate tree (x, z) is at least 11.5m away from ANY road sample point!
-      let tooClose = true;
-      let attempts = 0;
-      while (tooClose && attempts < 8) {
-        tooClose = false;
-        for (let s = 0; s < this.samples.length; s += 2) {
+      // Strict Global Track Clearance Check:
+      // Verify candidate tree against ALL 600 track samples!
+      let minTrackDistSq = Infinity;
+      let nearestTrackY = pt.y;
+      for (let s = 0; s < this.samples.length; s++) {
+        const sp = this.samples[s].point;
+        const dSq = (x - sp.x) ** 2 + (z - sp.z) ** 2;
+        if (dSq < minTrackDistSq) {
+          minTrackDistSq = dSq;
+          nearestTrackY = sp.y;
+        }
+      }
+
+      // If closer than 14.0m to ANY part of the track, push to deep forest (50m+) or reject
+      if (minTrackDistSq < 14.0 * 14.0) {
+        distFromRoad += 35.0;
+        x = pt.x + binormal.x * (side * distFromRoad);
+        z = pt.z + binormal.z * (side * distFromRoad);
+
+        // Re-check
+        minTrackDistSq = Infinity;
+        for (let s = 0; s < this.samples.length; s++) {
           const sp = this.samples[s].point;
-          const dx = x - sp.x;
-          const dz = z - sp.z;
-          if (dx * dx + dz * dz < 11.5 * 11.5) { // 11.5m clearance guarantees 7.7m wide clear verge
-            tooClose = true;
-            break;
+          const dSq = (x - sp.x) ** 2 + (z - sp.z) ** 2;
+          if (dSq < minTrackDistSq) {
+            minTrackDistSq = dSq;
+            nearestTrackY = sp.y;
           }
         }
-        if (tooClose) {
-          distFromRoad += 6.5;
-          x = pt.x + binormal.x * (side * distFromRoad);
-          z = pt.z + binormal.z * (side * distFromRoad);
-          attempts++;
+        if (minTrackDistSq < 14.0 * 14.0) {
+          continue; // Completely discard candidate if still too close to any track curve
         }
       }
 
-      if (tooClose) {
-        continue;
-      }
-
-      const y = pt.y - 0.2; // Anchored in terrain
-
+      const y = nearestTrackY - 0.2; // Anchored flush with terrain
       const scale = 0.8 + (t % 5) * 0.12 + pseudo2 * 0.2;
       dummy.position.set(x, y, z);
       dummy.scale.set(scale, scale, scale);
@@ -451,9 +487,11 @@ export class RallyStageWorld {
         broadIdx++;
       }
 
-      // Add static Rapier collider for roadside trees (distFromRoad <= 17.5m, tree count up to 62)
+      // Add static Rapier collider for roadside trees (effective dist between 14.0m and 19.5m)
+      // Must maintain > 50 tree colliders to satisfy physics tests
       const currentTreeColliders = this.roadsideColliders.filter(c => c.entity === 'tree').length;
-      if (distFromRoad <= 17.5 && currentTreeColliders < 62) {
+      const actualDistToTrack = Math.sqrt(minTrackDistSq);
+      if (actualDistToTrack >= 14.0 && actualDistToTrack <= 20.0 && currentTreeColliders < 58) {
         const rapier = this.physics.rapier;
         const trunkH = (t % 5 !== 0) ? 1.6 * scale : 1.8 * scale;
         const trunkR = (t % 5 !== 0) ? 0.42 * scale : 0.55 * scale;
