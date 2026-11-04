@@ -113,8 +113,14 @@ export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
   public chassisBody!: RAPIER.RigidBody;
-  private chassisCollider?: RAPIER.Collider;
+  public chassisCollider?: RAPIER.Collider;
   public drivingDirectionMode: 'forward' | 'reverse' = 'forward';
+
+  // Sub-mesh groups for damage & detachment
+  public chassisMainGroup!: THREE.Group;
+  public frontBumperGroup!: THREE.Group;
+  public hoodGroup!: THREE.Group;
+  public rearWingGroup!: THREE.Group;
 
   // Visual materials
   private brakeLightMat!: THREE.MeshBasicMaterial;
@@ -257,6 +263,9 @@ export class CustomRallyVehicle {
   private droopTransient: number = 0;
   public lastVisualDroop: number[] = [0, 0, 0, 0];
 
+  // Visual sub-mesh groups for damage & detachment
+  public carGroup!: THREE.Group;
+
   // Powertrain & Gearing State (V1)
   public isShifting: boolean = false;
   public shiftTimer: number = 0;
@@ -351,8 +360,10 @@ export class CustomRallyVehicle {
       .setFriction(0.05)
       .setRestitution(0.05)
       .setTranslation(0, 0.16, 0);
+    colDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
 
     this.chassisCollider = this.physics.world.createCollider(colDesc, this.chassisBody);
+    this.chassisCollider.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
     if (this.tuning.centerOfMassHeight !== undefined) this.setCenterOfMassHeight(this.tuning.centerOfMassHeight);
   }
 
@@ -1394,6 +1405,7 @@ export class CustomRallyVehicle {
 
   private createChassisVisuals(): void {
     const carGroup = new THREE.Group();
+    this.carGroup = carGroup;
 
     // Materials using verified sampled palette
     const bodyMat = new THREE.MeshStandardMaterial({
@@ -1482,6 +1494,17 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
+    // Partitioned sub-mesh groups for damage and detachment
+    this.chassisMainGroup = new THREE.Group();
+    this.frontBumperGroup = new THREE.Group();
+    this.hoodGroup = new THREE.Group();
+    this.rearWingGroup = new THREE.Group();
+
+    carGroup.add(this.chassisMainGroup);
+    carGroup.add(this.frontBumperGroup);
+    carGroup.add(this.hoodGroup);
+    carGroup.add(this.rearWingGroup);
+
     // =========================================================================
     // 1. MAIN LOWER BODY & SCULPTED CHASSIS
     // =========================================================================
@@ -1489,13 +1512,13 @@ export class CustomRallyVehicle {
     const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.38, 3.85), bodyMat);
     lowerBody.position.set(0, 0.19, 0.02);
     lowerBody.castShadow = true;
-    carGroup.add(lowerBody);
+    this.chassisMainGroup.add(lowerBody);
 
     // Sculpted rocker sills (bottom aerodynamic skirts)
     for (const sx of [-0.85, 0.85]) {
       const sill = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 2.05), trimMat);
       sill.position.set(sx, 0.04, 0.0);
-      carGroup.add(sill);
+      this.chassisMainGroup.add(sill);
     }
 
     // Hood / bonnet wedge sloping forward to front fascia
@@ -1503,13 +1526,13 @@ export class CustomRallyVehicle {
     hood.position.set(0, 0.37, 1.28);
     hood.rotation.x = 0.04;
     hood.castShadow = true;
-    carGroup.add(hood);
+    this.hoodGroup.add(hood);
 
     // Twin hood heat extractor louvers
     for (const hx of [-0.36, 0.36]) {
       const louver = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
       louver.position.set(hx, 0.42, 1.25);
-      carGroup.add(louver);
+      this.hoodGroup.add(louver);
     }
 
     // =========================================================================
@@ -1520,26 +1543,26 @@ export class CustomRallyVehicle {
     windshield.position.set(0, 0.62, 0.38);
     windshield.rotation.x = -0.68; // ~39 deg rake
     windshield.castShadow = true;
-    carGroup.add(windshield);
+    this.chassisMainGroup.add(windshield);
 
     // Structural A-pillars
     for (const ax of [-0.68, 0.68]) {
       const apillar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.74), bodyMat);
       apillar.position.set(ax, 0.62, 0.38);
       apillar.rotation.x = -0.68;
-      carGroup.add(apillar);
+      this.chassisMainGroup.add(apillar);
     }
 
     // Coupe roof cap
     const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.06, 0.95), bodyMat);
     roof.position.set(0, 0.86, -0.25);
     roof.castShadow = true;
-    carGroup.add(roof);
+    this.chassisMainGroup.add(roof);
 
     // Roof rally air scoop / periscope
     const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.34), trimMat);
     roofScoop.position.set(0, 0.915, -0.05);
-    carGroup.add(roofScoop);
+    this.chassisMainGroup.add(roofScoop);
 
     // SLOPED REAR FASTBACK WINDOW (Coupe Silhouette Key Element)
     // Long aerodynamic fastback glass sweeping down from roof to trunk deck
@@ -1547,7 +1570,7 @@ export class CustomRallyVehicle {
     fastbackWindow.position.set(0, 0.67, -1.14);
     fastbackWindow.rotation.x = 0.44; // ~25 deg fastback rake
     fastbackWindow.castShadow = true;
-    carGroup.add(fastbackWindow);
+    this.chassisMainGroup.add(fastbackWindow);
 
     // Sculpted C-pillar fastback flanks (left and right quarter panels)
     for (const cx of [-0.68, 0.68]) {
@@ -1555,46 +1578,46 @@ export class CustomRallyVehicle {
       cpillar.position.set(cx, 0.65, -1.12);
       cpillar.rotation.x = 0.44;
       cpillar.castShadow = true;
-      carGroup.add(cpillar);
+      this.chassisMainGroup.add(cpillar);
     }
 
     // Triangular coupe side windows
     for (const sx of [-0.68, 0.68]) {
       const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 0.68), glassMat);
       sideGlass.position.set(sx, 0.63, -0.25);
-      carGroup.add(sideGlass);
+      this.chassisMainGroup.add(sideGlass);
 
       const quarterGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.38), glassMat);
       quarterGlass.position.set(sx, 0.58, -0.72);
-      carGroup.add(quarterGlass);
+      this.chassisMainGroup.add(quarterGlass);
     }
 
     // Rear trunk deck lid extending from base of sloped rear window to rear valence
     const trunkLid = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.10, 0.48), bodyMat);
     trunkLid.position.set(0, 0.45, -1.78);
     trunkLid.castShadow = true;
-    carGroup.add(trunkLid);
+    this.chassisMainGroup.add(trunkLid);
 
     // Visible interior: tubular roll cage structure and bucket seat headrests
     const rollHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
     rollHoop.position.set(0, 0.81, -0.32);
-    carGroup.add(rollHoop);
+    this.chassisMainGroup.add(rollHoop);
 
     for (const rx of [-0.56, 0.56]) {
       const rollLeg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.04), rollCageMat);
       rollLeg.position.set(rx, 0.58, -0.32);
-      carGroup.add(rollLeg);
+      this.chassisMainGroup.add(rollLeg);
 
       const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.85), rollCageMat);
       rearStay.position.set(rx, 0.63, -0.80);
       rearStay.rotation.x = 0.45;
-      carGroup.add(rearStay);
+      this.chassisMainGroup.add(rearStay);
     }
 
     for (const seatX of [-0.32, 0.32]) {
       const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.12), trimMat);
       headrest.position.set(seatX, 0.56, -0.22);
-      carGroup.add(headrest);
+      this.chassisMainGroup.add(headrest);
     }
 
     // =========================================================================
@@ -1605,12 +1628,12 @@ export class CustomRallyVehicle {
       const frontArch = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.36, 0.98), bodyMat);
       frontArch.position.set(fx, 0.19, 1.35);
       frontArch.castShadow = true;
-      carGroup.add(frontArch);
+      this.chassisMainGroup.add(frontArch);
 
       // Inner wheel well liner
       const liner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.88), trimMat);
       liner.position.set(fx * 0.94, 0.16, 1.35);
-      carGroup.add(liner);
+      this.chassisMainGroup.add(liner);
     }
 
     // Rear muscular widebody box flares (centered around rear axle z = -1.35)
@@ -1618,12 +1641,12 @@ export class CustomRallyVehicle {
       const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.38, 1.18), bodyMat);
       rearArch.position.set(rx, 0.21, -1.35);
       rearArch.castShadow = true;
-      carGroup.add(rearArch);
+      this.chassisMainGroup.add(rearArch);
 
       // Rear arch brake duct / cooling vent cutout
       const vent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.10), trimMat);
       vent.position.set(rx * 1.02, 0.12, -0.80);
-      carGroup.add(vent);
+      this.chassisMainGroup.add(vent);
     }
 
     // =========================================================================
@@ -1633,23 +1656,23 @@ export class CustomRallyVehicle {
     const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.30, 0.26), bodyMat);
     frontBumper.position.set(0, 0.17, 2.02);
     frontBumper.castShadow = true;
-    carGroup.add(frontBumper);
+    this.frontBumperGroup.add(frontBumper);
 
     // Lower aerodynamic chin splitter
     const frontSplitter = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.05, 0.36), trimMat);
     frontSplitter.position.set(0, 0.01, 2.06);
-    carGroup.add(frontSplitter);
+    this.frontBumperGroup.add(frontSplitter);
 
     // Front center radiator intake air dam
     const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
     radiatorGrille.position.set(0, 0.13, 2.155);
-    carGroup.add(radiatorGrille);
+    this.frontBumperGroup.add(radiatorGrille);
 
     // Aluminum underbody bash / skid plate
     const bashPlate = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.04, 0.58), bashPlateMat);
     bashPlate.position.set(0, -0.06, 1.82);
     bashPlate.rotation.x = 0.26; // Slopes up to front lip
-    carGroup.add(bashPlate);
+    this.frontBumperGroup.add(bashPlate);
 
     // Rally tow recovery loop
     const towLoop = new THREE.Mesh(
@@ -1657,7 +1680,7 @@ export class CustomRallyVehicle {
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.6 })
     );
     towLoop.position.set(0.48, 0.04, 2.18);
-    carGroup.add(towLoop);
+    this.frontBumperGroup.add(towLoop);
 
     // Quad front rally pod driving lamps
     for (let i = -1.5; i <= 1.5; i += 1.0) {
@@ -1667,7 +1690,7 @@ export class CustomRallyVehicle {
       );
       lampHousing.rotateX(Math.PI / 2);
       lampHousing.position.set(i * 0.33, 0.24, 2.08);
-      carGroup.add(lampHousing);
+      this.frontBumperGroup.add(lampHousing);
 
       const lampLens = new THREE.Mesh(
         new THREE.CylinderGeometry(0.11, 0.11, 0.02, 16),
@@ -1680,7 +1703,7 @@ export class CustomRallyVehicle {
       );
       lampLens.rotateX(Math.PI / 2);
       lampLens.position.set(i * 0.33, 0.24, 2.135);
-      carGroup.add(lampLens);
+      this.frontBumperGroup.add(lampLens);
     }
 
     // =========================================================================
@@ -1690,25 +1713,25 @@ export class CustomRallyVehicle {
     const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.30, 0.26), bodyMat);
     rearBumper.position.set(0, 0.17, -2.00);
     rearBumper.castShadow = true;
-    carGroup.add(rearBumper);
+    this.chassisMainGroup.add(rearBumper);
 
     // Lower rear diffuser tray
     const rearDiffuser = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.04, 0.34), trimMat);
     rearDiffuser.position.set(0, -0.03, -1.98);
-    carGroup.add(rearDiffuser);
+    this.chassisMainGroup.add(rearDiffuser);
 
     // Vertical diffuser strakes
     for (const dx of [-0.48, -0.16, 0.16]) {
       const strake = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.10, 0.28), trimMat);
       strake.position.set(dx, -0.06, -1.98);
-      carGroup.add(strake);
+      this.chassisMainGroup.add(strake);
     }
 
     // Heat shield plate above exhaust tips
     const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.14), bashPlateMat);
     heatShield.position.set(0.53, 0.05, -2.132);
     heatShield.rotation.y = Math.PI;
-    carGroup.add(heatShield);
+    this.chassisMainGroup.add(heatShield);
 
     // DUAL EXHAUST PIPES (Polished stainless steel tailpipes)
     for (const ex of [0.46, 0.60]) {
@@ -1718,7 +1741,7 @@ export class CustomRallyVehicle {
       );
       exhaustPipe.rotateX(Math.PI / 2);
       exhaustPipe.position.set(ex, -0.04, -2.10);
-      carGroup.add(exhaustPipe);
+      this.chassisMainGroup.add(exhaustPipe);
 
       // Dark soot interior bore
       const bore = new THREE.Mesh(
@@ -1727,7 +1750,7 @@ export class CustomRallyVehicle {
       );
       bore.rotateX(Math.PI / 2);
       bore.position.set(ex, -0.04, -2.205);
-      carGroup.add(bore);
+      this.chassisMainGroup.add(bore);
     }
 
     // =========================================================================
@@ -1738,7 +1761,7 @@ export class CustomRallyVehicle {
       const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
       pylon.position.set(px, 0.62, -1.82);
       pylon.rotation.x = 0.14; // Swept back
-      carGroup.add(pylon);
+      this.rearWingGroup.add(pylon);
     }
 
     // High-mounted contoured aerodynamic wing blade
@@ -1746,18 +1769,18 @@ export class CustomRallyVehicle {
     wingBlade.position.set(0, 0.79, -1.88);
     wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
     wingBlade.castShadow = true;
-    carGroup.add(wingBlade);
+    this.rearWingGroup.add(wingBlade);
 
     // Trailing edge Gurney flap wickerbill
     const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.03, 0.02), trimMat);
     gurneyFlap.position.set(0, 0.825, -2.09);
-    carGroup.add(gurneyFlap);
+    this.rearWingGroup.add(gurneyFlap);
 
     // Vertical aerodynamic wing endplates
     for (const ex of [-0.88, 0.88]) {
       const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.48), trimMat);
       endplate.position.set(ex, 0.79, -1.88);
-      carGroup.add(endplate);
+      this.rearWingGroup.add(endplate);
     }
 
     // =========================================================================
@@ -1766,40 +1789,40 @@ export class CustomRallyVehicle {
     // Left cluster
     const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
     tlRedL.position.set(-0.55, 0.30, -2.13);
-    carGroup.add(tlRedL);
+    this.chassisMainGroup.add(tlRedL);
 
     const tlAmberL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
     tlAmberL.position.set(-0.63, 0.19, -2.13);
-    carGroup.add(tlAmberL);
+    this.chassisMainGroup.add(tlAmberL);
 
     const tlWhiteL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
     tlWhiteL.position.set(-0.47, 0.19, -2.13);
-    carGroup.add(tlWhiteL);
+    this.chassisMainGroup.add(tlWhiteL);
 
     // Right cluster
     const tlRedR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
     tlRedR.position.set(0.55, 0.30, -2.13);
-    carGroup.add(tlRedR);
+    this.chassisMainGroup.add(tlRedR);
 
     const tlAmberR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
     tlAmberR.position.set(0.63, 0.19, -2.13);
-    carGroup.add(tlAmberR);
+    this.chassisMainGroup.add(tlAmberR);
 
     const tlWhiteR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
     tlWhiteR.position.set(0.47, 0.19, -2.13);
-    carGroup.add(tlWhiteR);
+    this.chassisMainGroup.add(tlWhiteR);
 
     // Glow quads behind each brake light cluster
     const glowGeom = new THREE.PlaneGeometry(0.42, 0.18);
     const glowL = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
     glowL.position.set(-0.55, 0.30, -2.132);
     glowL.rotation.y = Math.PI;
-    carGroup.add(glowL);
+    this.chassisMainGroup.add(glowL);
 
     const glowR = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
     glowR.position.set(0.55, 0.30, -2.132);
     glowR.rotation.y = Math.PI;
-    carGroup.add(glowR);
+    this.chassisMainGroup.add(glowR);
 
     // Custom License Plate: "APEX RALLY" + Bloom sprites
     if (typeof document !== 'undefined') {
@@ -1828,7 +1851,7 @@ export class CustomRallyVehicle {
       this.brakeLightSpriteL = new THREE.Sprite(spriteMatL);
       this.brakeLightSpriteL.scale.set(0.85, 0.50, 1);
       this.brakeLightSpriteL.position.set(-0.55, 0.30, -2.18);
-      carGroup.add(this.brakeLightSpriteL);
+      this.chassisMainGroup.add(this.brakeLightSpriteL);
 
       const spriteMatR = new THREE.SpriteMaterial({
         map: bTex,
@@ -1841,7 +1864,7 @@ export class CustomRallyVehicle {
       this.brakeLightSpriteR = new THREE.Sprite(spriteMatR);
       this.brakeLightSpriteR.scale.set(0.85, 0.50, 1);
       this.brakeLightSpriteR.position.set(0.55, 0.30, -2.18);
-      carGroup.add(this.brakeLightSpriteR);
+      this.chassisMainGroup.add(this.brakeLightSpriteR);
 
       const plateCanvas = document.createElement('canvas');
       plateCanvas.width = 256;
@@ -1863,7 +1886,7 @@ export class CustomRallyVehicle {
       const plateMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.14), plateMat);
       plateMesh.position.set(0, 0.18, -2.135);
       plateMesh.rotateY(Math.PI);
-      carGroup.add(plateMesh);
+      this.chassisMainGroup.add(plateMesh);
     }
 
     this.chassisMesh.add(carGroup);

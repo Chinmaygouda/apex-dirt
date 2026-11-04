@@ -59,6 +59,8 @@ export class RallyStageWorld {
 
   // Physics colliders
   private physicsColliders: RAPIER.Collider[] = [];
+  public roadsideColliders: { collider: RAPIER.Collider; entity: 'tree' | 'fence' | 'chevron' | 'barrier' }[] = [];
+  public obstacleColliders: { collider: RAPIER.Collider; type: 'tree' | 'fence' | 'chevron' }[] = [];
 
   constructor(private scene: THREE.Scene, private physics: PhysicsWorld) {
     this.spline = this.buildSplineRoute();
@@ -406,6 +408,20 @@ export class RallyStageWorld {
         broadFoliageMesh.setMatrixAt(broadIdx, dummy.matrix);
         broadIdx++;
       }
+
+      // Add static Rapier collider for roadside trees within impact zone
+      if (distFromRoad < 14.0) {
+        const rapier = this.physics.rapier;
+        const treeBodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(x, y + 1.6 * scale, z);
+        const treeBody = this.physics.world.createRigidBody(treeBodyDesc);
+        const treeColDesc = rapier.ColliderDesc.cylinder(1.6 * scale, 0.42 * scale)
+          .setFriction(0.85)
+          .setRestitution(0.05);
+        treeColDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
+        const treeCol = this.physics.world.createCollider(treeColDesc, treeBody);
+        this.physicsColliders.push(treeCol);
+        this.roadsideColliders.push({ collider: treeCol, entity: 'tree' });
+      }
     }
 
     pineTrunkMesh.instanceMatrix.needsUpdate = true;
@@ -449,6 +465,17 @@ export class RallyStageWorld {
         post.position.set(boardX, boardY - 0.4, boardZ);
         post.castShadow = true;
         chevronGroup.add(post);
+
+        const rapier = this.physics.rapier;
+        const postBodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(boardX, boardY - 0.4, boardZ);
+        const postBody = this.physics.world.createRigidBody(postBodyDesc);
+        const postColDesc = rapier.ColliderDesc.cylinder(0.8, 0.15)
+          .setFriction(0.7)
+          .setRestitution(0.1);
+        postColDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
+        const postCol = this.physics.world.createCollider(postColDesc, postBody);
+        this.physicsColliders.push(postCol);
+        this.roadsideColliders.push({ collider: postCol, entity: 'chevron' });
 
         const boardGeom = new THREE.BoxGeometry(1.2, 0.75, 0.06);
         const boardMat = new THREE.MeshStandardMaterial({
@@ -533,6 +560,17 @@ export class RallyStageWorld {
         post.position.set(fx, fy + 0.6, fz);
         post.castShadow = true;
         fenceGroup.add(post);
+
+        const rapier = this.physics.rapier;
+        const postBodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(fx, fy + 0.6, fz);
+        const postBody = this.physics.world.createRigidBody(postBodyDesc);
+        const postColDesc = rapier.ColliderDesc.cylinder(0.6, 0.16)
+          .setFriction(0.7)
+          .setRestitution(0.1);
+        postColDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
+        const postCol = this.physics.world.createCollider(postColDesc, postBody);
+        this.physicsColliders.push(postCol);
+        this.roadsideColliders.push({ collider: postCol, entity: 'fence' });
 
         // Horizontal rails
         if (p < numPosts - 1) {

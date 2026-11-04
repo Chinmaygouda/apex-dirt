@@ -43,6 +43,11 @@ export class RallyAudioEngine {
   private brakeGain: GainNode | null = null;
   private brakeFilter: BiquadFilterNode | null = null;
 
+  // 4b. Turbo Boost Whine & Wastegate Flutter
+  private turboGain: GainNode | null = null;
+  private turboOsc: OscillatorNode | null = null;
+  private prevThrottleInput: number = 0;
+
   // 5. Shared Looped Noise Buffer
   private noiseSource: AudioBufferSourceNode | null = null;
 
@@ -116,6 +121,9 @@ export class RallyAudioEngine {
 
       // 7. Brake Friction Subsystem
       this.setupBrakeGraph(ctx, noiseBuffer);
+
+      // 8. Turbo Boost Whistle Subsystem
+      this.setupTurboGraph(ctx);
 
       this.isInitialized = true;
       return true;
@@ -281,6 +289,43 @@ export class RallyAudioEngine {
     src.start();
   }
 
+  private setupTurboGraph(ctx: AudioContext): void {
+    this.turboOsc = ctx.createOscillator();
+    this.turboOsc.type = 'sine';
+    this.turboOsc.frequency.setValueAtTime(1400, ctx.currentTime);
+
+    this.turboGain = ctx.createGain();
+    this.turboGain.gain.setValueAtTime(0.0, ctx.currentTime);
+
+    this.turboOsc.connect(this.turboGain);
+    this.turboGain.connect(this.masterGain!);
+    this.turboOsc.start();
+  }
+
+  public triggerWastegateFlutter(intensity: number = 1.0): void {
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const ctx = this.ctx;
+
+    for (let p = 0; p < 4; p++) {
+      const pulseTime = now + p * 0.055;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(1800 - p * 150, pulseTime);
+      osc.frequency.exponentialRampToValueAtTime(750, pulseTime + 0.045);
+
+      const g = ctx.createGain();
+      const pVol = (0.28 - p * 0.055) * intensity;
+      g.gain.setValueAtTime(pVol, pulseTime);
+      g.gain.exponentialRampToValueAtTime(0.001, pulseTime + 0.045);
+
+      osc.connect(g);
+      g.connect(this.masterGain!);
+      osc.start(pulseTime);
+      osc.stop(pulseTime + 0.05);
+    }
+  }
+
   /**
    * Trigger procedural rally anti-lag exhaust pop
    * Synced with Phase 2a exhaust flame cone & smoke puff
@@ -374,6 +419,67 @@ export class RallyAudioEngine {
   }
 
   /**
+   * Trigger procedural crash / metal deformation crunch sound
+   */
+  public triggerCollision(severity: 'minor' | 'medium' | 'severe', impulse: number): void {
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const ctx = this.ctx;
+
+    // 1. Heavy low-frequency chassis thump
+    const subOsc = ctx.createOscillator();
+    subOsc.type = 'triangle';
+    subOsc.frequency.setValueAtTime(120, now);
+    subOsc.frequency.exponentialRampToValueAtTime(35, now + 0.18);
+
+    const subGain = ctx.createGain();
+    const subVolume = Math.min(1.0, 0.4 + impulse / 15000);
+    subGain.gain.setValueAtTime(subVolume, now);
+    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+    subOsc.connect(subGain);
+    subGain.connect(this.masterGain!);
+    subOsc.start(now);
+    subOsc.stop(now + 0.25);
+
+    // 2. High-frequency metal crunch / shatter
+    if (this.noiseSource && this.noiseSource.buffer) {
+      const crunchSrc = ctx.createBufferSource();
+      crunchSrc.buffer = this.noiseSource.buffer;
+
+      const crunchFilter = ctx.createBiquadFilter();
+      crunchFilter.type = 'bandpass';
+      crunchFilter.frequency.setValueAtTime(severity === 'severe' ? 1600 : 2200, now);
+      crunchFilter.Q.setValueAtTime(3.0, now);
+
+      const crunchGain = ctx.createGain();
+      crunchGain.gain.setValueAtTime(severity === 'severe' ? 0.85 : 0.45, now);
+      crunchGain.gain.exponentialRampToValueAtTime(0.001, now + (severity === 'severe' ? 0.35 : 0.15));
+
+      crunchSrc.connect(crunchFilter);
+      crunchFilter.connect(crunchGain);
+      crunchGain.connect(this.masterGain!);
+      crunchSrc.start(now);
+    }
+
+    // 3. Resonant metallic ring for severe impacts
+    if (severity === 'severe') {
+      const ringOsc = ctx.createOscillator();
+      ringOsc.type = 'sine';
+      ringOsc.frequency.setValueAtTime(840, now);
+
+      const ringGain = ctx.createGain();
+      ringGain.gain.setValueAtTime(0.4, now);
+      ringGain.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
+
+      ringOsc.connect(ringGain);
+      ringGain.connect(this.masterGain!);
+      ringOsc.start(now);
+      ringOsc.stop(now + 0.7);
+    }
+  }
+
+  /**
    * Main audio frame update called from render loop
    */
   public update(dt: number, telem: VehicleTelemetry): void {
@@ -408,6 +514,19 @@ export class RallyAudioEngine {
     // Engine volume scales with throttle and revs
     const targetEngineVol = 0.25 + throttle * 0.45 + (effectiveRpm / 7500) * 0.25;
     this.engineGain?.gain.setTargetAtTime(targetEngineVol, now, 0.03);
+
+    // 3b. Turbo Whine & Wastegate Flutter
+    if (this.turboOsc && this.turboGain) {
+      const boostRpm = Math.max(0, (effectiveRpm - 2200) / 5800);
+      const turboFreq = 1200 + boostRpm * 2200;
+      const turboVol = throttle * boostRpm * 0.18;
+      this.turboOsc.frequency.setTargetAtTime(turboFreq, now, 0.04);
+      this.turboGain.gain.setTargetAtTime(turboVol, now, 0.04);
+    }
+    if (this.prevThrottleInput > 0.65 && throttle < 0.20 && effectiveRpm > 4200) {
+      this.triggerWastegateFlutter(1.0);
+    }
+    this.prevThrottleInput = throttle;
 
     // 4. Tyre Skid Sound (Lateral Slip Angle & Slide Speed)
     const slipDeg = Math.abs(telem.driftAngleDeg || 0);

@@ -1,9 +1,17 @@
 import * as THREE from 'three';
 import { PhysicsWorld } from './physics/PhysicsWorld';
+import { CollisionImpulseDispatcher } from './physics/CollisionImpulseDispatcher';
 import { InputManager } from './core/InputManager';
 import { SandboxEnvironment } from './world/SandboxEnvironment';
 import { CustomRallyVehicle } from './vehicles/CustomRallyVehicle';
 import { ChaseCamera } from './core/ChaseCamera';
+import { CameraManager } from './core/CameraManager';
+import { CockpitController } from './vehicles/CockpitController';
+import { HeadlightController } from './vehicles/HeadlightController';
+import { DayNightCycleController } from './world/DayNightCycleController';
+import { WildlifeCrossingManager } from './world/WildlifeCrossingManager';
+import { VehicleDamageController } from './vehicles/VehicleDamageController';
+import { CoDriverSystem } from './gameplay/CoDriverSystem';
 import { TelemetryHUD } from './ui/TelemetryHUD';
 import { VehicleDebugOverlay } from './ui/VehicleDebugOverlay';
 import { TuningPanel } from './ui/TuningPanel';
@@ -12,6 +20,7 @@ import { RallyStageWorld, STAGE_PALETTE } from './world/RallyStageWorld';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
 
 async function initGame() {
+  (window as any).THREE = THREE;
   // 1. Renderer Setup
   const renderer = new THREE.WebGLRenderer({
     antialias: true,
@@ -81,7 +90,32 @@ async function initGame() {
   vehicleEffects.onExhaustPop = () => audioEngine.triggerExhaustPop();
 
   // 8. Chase Camera
-  const camera = new ChaseCamera(window.innerWidth / window.innerHeight);
+  // 8. Multi-Camera Manager (Chase, Cockpit FPV, Hood)
+  const camera = new CameraManager(window.innerWidth / window.innerHeight);
+
+  // 8b. Cockpit Interior & Driver IK Rig
+  const cockpit = new CockpitController(vehicle.carGroup);
+
+  // 8c. Headlights Controller
+  const headlightController = new HeadlightController(vehicle.carGroup, scene);
+
+  // 8d. Dynamic Day/Night Lighting Cycle
+  const dayNightCycle = new DayNightCycleController(scene, sunLight, hemiLight);
+
+  // 8e. Wildlife Crossing Manager
+  const wildlifeCrossing = new WildlifeCrossingManager(scene, rallyWorld);
+
+  // 8f. Vehicle Damage Controller (localized crumple + detachable debris)
+  const { CollisionImpulseDispatcher } = await import('./physics/CollisionImpulseDispatcher');
+  const collisionDispatcher = new CollisionImpulseDispatcher(physics);
+  collisionDispatcher.registerCarCollider(vehicle.chassisCollider);
+  for (const item of rallyWorld.roadsideColliders) {
+    collisionDispatcher.registerEntity(item.collider, item.entity);
+  }
+  const damageController = new VehicleDamageController(scene, vehicle, physics, collisionDispatcher);
+
+  // 8g. Co-Driver Pace Notes System
+  const coDriver = new CoDriverSystem(rallyWorld, vehicle);
 
   // 9. Input & UI with Demo Automation
   const inputManager = new InputManager();
@@ -151,7 +185,7 @@ async function initGame() {
 
   const tuningPanel = new TuningPanel(
     vehicle,
-    camera,
+    camera.chaseCam,
     runSkidpadTest,
     runHandbrakeTest,
     (show) => debugOverlay.setVisible(show)
@@ -164,17 +198,31 @@ async function initGame() {
   });
 
   // Replay Visualizer & Screenshot Capture
-  const replayVisualizer = new ReplayVisualizer(scene, physics, vehicle, camera, renderer, sunLight);
+  const replayVisualizer = new ReplayVisualizer(scene, physics, vehicle, camera.chaseCam, renderer, sunLight);
   (window as any).runVisualReplay = () => replayVisualizer.runAndCaptureScreenshots();
 
   // Deterministic Video Recorder
   const { DeterministicVideoRecorder } = await import('./video/DeterministicVideoRecorder');
-  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera, renderer, sunLight, stageManager);
+  const videoRecorder = new DeterministicVideoRecorder(scene, physics, vehicle, camera.chaseCam, renderer, sunLight, stageManager);
   (window as any).renderAllVideos = () => videoRecorder.renderAllClips();
   (window as any).renderKeyboardVideo = () => videoRecorder.renderClipKeyboardFeel();
   (window as any).stageManager = stageManager;
   (window as any).restartStage = () => stageManager.restart();
+  (window as any).cameraManager = camera;
+  (window as any).cockpitController = cockpit;
+  (window as any).headlightController = headlightController;
+  (window as any).dayNightCycle = dayNightCycle;
+  (window as any).wildlifeCrossing = wildlifeCrossing;
+  (window as any).damageController = damageController;
+  (window as any).coDriver = coDriver;
   (window as any).audioEngine = audioEngine;
+  (window as any).cameraManager = camera;
+  (window as any).cockpit = cockpit;
+  (window as any).headlightController = headlightController;
+  (window as any).dayNightCycle = dayNightCycle;
+  (window as any).wildlifeCrossing = wildlifeCrossing;
+  (window as any).damageController = damageController;
+  (window as any).coDriver = coDriver;
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -236,6 +284,19 @@ async function initGame() {
 
     // Get current inputs
     let inputs = inputManager.update();
+
+    if (inputs.cameraCycle) {
+      const mode = camera.cycleMode();
+      hud.setCameraMode?.(mode);
+    }
+    if (inputs.headlightToggle) {
+      const on = headlightController.toggle();
+      hud.setHeadlights?.(on);
+    }
+    if (inputs.dayNightToggle) {
+      const preset = dayNightCycle.togglePreset();
+      hud.setTimeOfDay?.(preset);
+    }
 
     if (inputs.demoSkidpad) {
       runSkidpadTest();
@@ -312,13 +373,25 @@ async function initGame() {
     // 120 Hz Physics Substepping
     physics.step(frameDt, (substepDt) => {
       vehicle.updatePhysicsSubstep(substepDt, inputs);
+      if (vehicle.chassisMesh) {
+        collisionDispatcher.drainImpulses(substepDt, vehicle.chassisMesh.position, vehicle.chassisMesh.quaternion);
+      }
     });
 
     // Update Visuals & Sync Meshes
     vehicle.updateVisuals(inputs);
 
     // Update Chase Camera
-    camera.update(vehicle, frameDt);
+    damageController.update(frameDt);
+
+    const telemetry = vehicle.getTelemetry(inputs);
+    cockpit.update(frameDt, telemetry, inputs.steer);
+    dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
+    if (vehicle.chassisMesh) {
+      wildlifeCrossing.update(frameDt, vehicle.chassisMesh.position);
+    }
+    coDriver.update(frameDt);
+    camera.update(vehicle, frameDt, inputs.steer);
 
     // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
     vehicleEffects.update(frameDt, inputs, camera.camera, sunLight);
@@ -332,11 +405,14 @@ async function initGame() {
 
     if (inputs.reset) {
       stageManager.restart();
+      damageController.reset();
+      wildlifeCrossing.reset();
+      coDriver.reset();
     }
     stageManager.update(frameDt);
 
     // Update Telemetry HUD & Debug Overlay
-    const telemetry = vehicle.getTelemetry(inputs);
+
     hud.update(telemetry, stageManager);
     debugOverlay.update(telemetry);
 

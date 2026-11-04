@@ -24,6 +24,9 @@ export class TelemetryHUD {
   private handbrakeBadge!: HTMLElement;
   private clutchBadge!: HTMLElement;
   private distanceEl!: HTMLElement;
+  private cameraBadge?: HTMLElement;
+  private lightsBadge?: HTMLElement;
+  private todBadge?: HTMLElement;
 
   private steerBarFill!: HTMLElement;
   private throttleBarFill!: HTMLElement;
@@ -545,6 +548,9 @@ export class TelemetryHUD {
         </div>
       </div>
       <div class="hud-badges-row">
+        <div class="hud-badge" id="camera-badge" style="cursor: pointer; pointer-events: auto;">🎥 CHASE [C]</div>
+        <div class="hud-badge" id="lights-badge" style="cursor: pointer; pointer-events: auto;">💡 OFF [L]</div>
+        <div class="hud-badge" id="tod-badge" style="cursor: pointer; pointer-events: auto;">☀️ NOON [N]</div>
         <div class="hud-badge" id="handbrake-badge">HB</div>
         <div class="hud-badge" id="clutch-badge">CLUTCH</div>
         <div class="hud-badge" id="drivetrain-badge">RWD</div>
@@ -561,6 +567,9 @@ export class TelemetryHUD {
     this.handbrakeBadge = bottomRight.querySelector('#handbrake-badge') as HTMLElement;
     this.clutchBadge = bottomRight.querySelector('#clutch-badge') as HTMLElement;
     this.drivetrainBadge = bottomRight.querySelector('#drivetrain-badge') as HTMLElement;
+    this.cameraBadge = bottomRight.querySelector('#camera-badge') as HTMLElement;
+    this.lightsBadge = bottomRight.querySelector('#lights-badge') as HTMLElement;
+    this.todBadge = bottomRight.querySelector('#tod-badge') as HTMLElement;
 
     const audioBadge = bottomRight.querySelector('#audio-badge') as HTMLElement;
     audioBadge.addEventListener('click', (e) => {
@@ -769,5 +778,25 @@ export class TelemetryHUD {
     ctx.beginPath();
     ctx.arc(cx, cy, radius + 8, redlineAngle - 0.05, redlineAngle + 0.05);
     ctx.stroke();
+  }
+
+  public setCameraMode(mode: string): void {
+    if (this.cameraBadge) {
+      this.cameraBadge.textContent = `🎥 ${mode} [C]`;
+    }
+  }
+
+  public setHeadlights(on: boolean): void {
+    if (this.lightsBadge) {
+      this.lightsBadge.textContent = on ? '💡 ON [L]' : '💡 OFF [L]';
+      this.lightsBadge.style.color = on ? '#fbbf24' : 'rgba(255,255,255,0.7)';
+    }
+  }
+
+  public setTimeOfDay(tod: string): void {
+    if (this.todBadge) {
+      const icon = tod === 'NOON' ? '☀️' : tod === 'DUSK' ? '🌅' : '🌙';
+      this.todBadge.textContent = `${icon} ${tod} [N]`;
+    }
   }
 }

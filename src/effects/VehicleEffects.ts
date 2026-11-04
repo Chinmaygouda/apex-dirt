@@ -414,6 +414,24 @@ export class VehicleEffects {
     this.sunGlareIntensity += (targetGlare - this.sunGlareIntensity) * Math.min(1.0, 8.0 * dt);
   }
 
+  public triggerImpactSparks(worldPos: THREE.Vector3): void {
+    const sparkColor = new THREE.Color(1.0, 0.65, 0.1);
+    for (let i = 0; i < 18; i++) {
+      this.emitParticle(
+        worldPos.x + THREE.MathUtils.randFloatSpread(0.2),
+        worldPos.y + THREE.MathUtils.randFloat(0.1, 0.4),
+        worldPos.z + THREE.MathUtils.randFloatSpread(0.2),
+        THREE.MathUtils.randFloatSpread(4.5),
+        THREE.MathUtils.randFloat(2.0, 5.0),
+        THREE.MathUtils.randFloatSpread(4.5),
+        0.08,
+        0.22,
+        0.35,
+        sparkColor
+      );
+    }
+  }
+
   private emitParticle(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number, maxSize: number, maxLife: number, color: THREE.Color): void {
     const p = this.particles[this.particleIdx];
     p.x = x; p.y = y; p.z = z;

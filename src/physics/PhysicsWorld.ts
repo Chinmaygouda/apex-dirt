@@ -4,6 +4,7 @@ import { PHYSICS_CONFIG } from '../core/Constants';
 export class PhysicsWorld {
   public rapier!: typeof RAPIER;
   public world!: RAPIER.World;
+  public eventQueue!: RAPIER.EventQueue;
   private timeAccumulator = 0;
   private isReady = false;
 
@@ -11,6 +12,7 @@ export class PhysicsWorld {
     await RAPIER.init();
     this.rapier = RAPIER;
     this.world = new RAPIER.World({ x: 0, y: PHYSICS_CONFIG.GRAVITY, z: 0 });
+    this.eventQueue = new this.rapier.EventQueue(true);
     this.isReady = true;
   }
 
@@ -34,7 +36,11 @@ export class PhysicsWorld {
 
     while (this.timeAccumulator >= dt && substeps < PHYSICS_CONFIG.MAX_SUBSTEPS_PER_FRAME) {
       onSubstep(dt);
-      this.world.step();
+      if (this.eventQueue) {
+        this.world.step(this.eventQueue);
+      } else {
+        this.world.step();
+      }
       this.timeAccumulator -= dt;
       substeps++;
     }
@@ -42,6 +48,18 @@ export class PhysicsWorld {
     // Prevent death spiral if tab was in background or frozen for > 150ms
     if (this.timeAccumulator > 0.15) {
       this.timeAccumulator = dt;
+    }
+  }
+
+  public drainContactForceEvents(callback: (evt: RAPIER.TempContactForceEvent) => void): void {
+    if (this.eventQueue) {
+      this.eventQueue.drainContactForceEvents(callback);
+    }
+  }
+
+  public drainCollisionEvents(callback: (h1: number, h2: number, started: boolean) => void): void {
+    if (this.eventQueue) {
+      this.eventQueue.drainCollisionEvents(callback);
     }
   }
 }
