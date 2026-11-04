@@ -22,8 +22,8 @@ export class CameraManager {
   public set maxSpeedFov(v: number) { this.chaseCam.maxSpeedFov = v; }
   private headLookOffset = new THREE.Vector3();
 
-  // Cockpit local eye position (Driver seat left side, driver eye height looking through windscreen)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.66, -0.16);
+  // Cockpit local eye position (Driver seat left side, seated back in bucket seat for spacious view)
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.62, -0.28);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -75,9 +75,9 @@ export class CameraManager {
     const speedMph = Math.hypot(linvel.x, linvel.y, linvel.z) * 2.23694;
 
     if (this.currentMode === 'COCKPIT_FPV') {
-      if (this.camera.near !== 0.05) { this.camera.near = 0.05; this.camera.updateProjectionMatrix(); }
-      // Base FOV ~62 deg inside cockpit for wider peripheral vision
-      const targetFov = THREE.MathUtils.lerp(60, 72, Math.min(1.0, speedMph / 120.0));
+      if (this.camera.near !== 0.04) { this.camera.near = 0.04; this.camera.updateProjectionMatrix(); }
+      // Dynamic cockpit FOV: 74 deg base for spacious peripheral view, expanding to 84 deg at speed
+      const targetFov = THREE.MathUtils.lerp(74, 84, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
       this.camera.updateProjectionMatrix();
 
@@ -85,13 +85,10 @@ export class CameraManager {
       const worldEye = this.cockpitEyeOffset.clone().applyQuaternion(chassisQuat).add(chassisPos);
       this.camera.position.copy(worldEye);
 
-      // Look direction: forward + slight lookahead into turn, looking down at road line
-      const targetLookYaw = -steerInput * 0.28;
-      const lookOffset = right.clone().multiplyScalar(Math.sin(targetLookYaw))
-        .add(forward.clone().multiplyScalar(Math.cos(targetLookYaw)))
-        .multiplyScalar(25.0);
-
-      const lookTarget = worldEye.clone().add(lookOffset).addScaledVector(up, -2.2);
+      // Camera orientation: rock-steady forward view locked to vehicle chassis (NO steer yaw rotation).
+      // Only the steering wheel in the cockpit rotates when steering!
+      // Subtle -0.90m downward pitch over 35m horizon frames windshield, track, and dashboard naturally.
+      const lookTarget = worldEye.clone().addScaledVector(forward, 35.0).addScaledVector(up, -0.90);
       this.camera.lookAt(lookTarget);
       this.camera.up.copy(up);
 

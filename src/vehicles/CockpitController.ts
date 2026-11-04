@@ -15,11 +15,12 @@ function createSafeCanvas(width: number, height: number): HTMLCanvasElement | nu
 
 /**
  * CockpitController handles:
- * 1. Cabin interior (flocked sculpted dashboard, WRC steel roll cage with diagonal cross-brace,
- *    interior A-pillars, sun strip visor banner, rearview mirror, wipers, co-driver pacenotes)
+ * 1. Cabin interior (dark alcantara sculpted dashboard, full floor tub covering lower chassis,
+ *    hollow binnacle cowl, slim WRC steel roll cage tucked high to header, framing A-pillars,
+ *    sun strip visor banner, rearview mirror, wipers, co-driver pacenotes)
  * 2. Rotating rally steering wheel (+-180 deg) with 3 drilled alloy spokes, center hub badge,
  *    and yellow 12 o'clock center stripe
- * 3. Working analog dashboard gauges (Tachometer 0-240 deg, Speedometer 0-220 deg)
+ * 3. Working illuminated analog dashboard gauges (Tachometer 0-240 deg, Speedometer 0-220 deg)
  *    and digital red 7-segment gear indicator pod on the A-pillar cowl
  * 4. Driver model with 2-bone arm IK gripping the wheel with high-grip rally gloves
  *    and animated sequential gear shifting
@@ -60,14 +61,14 @@ export class CockpitController {
   private prevGear: number | string = 1;
 
   // Positions relative to car chassis origin
-  // Driver sits on left: x = -0.32, y = 0.30, z = -0.18
-  private readonly driverPos = new THREE.Vector3(-0.32, 0.30, -0.18);
-  private readonly wheelCenter = new THREE.Vector3(-0.32, 0.46, 0.18);
-  private readonly shifterPos = new THREE.Vector3(0.0, 0.28, 0.14);
+  // Driver sits on left: x = -0.32, y = 0.28, z = -0.26
+  private readonly driverPos = new THREE.Vector3(-0.32, 0.28, -0.26);
+  private readonly wheelCenter = new THREE.Vector3(-0.32, 0.44, 0.16);
+  private readonly shifterPos = new THREE.Vector3(0.0, 0.26, 0.14);
 
   // Arm joint anchor offsets from driver torso
-  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.50, -0.16);
-  private readonly rightShoulder = new THREE.Vector3(-0.16, 0.50, -0.16);
+  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.49, -0.18);
+  private readonly rightShoulder = new THREE.Vector3(-0.16, 0.49, -0.18);
 
   // Fixed 2-bone lengths
   private readonly upperArmLen = 0.26;
@@ -102,9 +103,10 @@ export class CockpitController {
   }
 
   /**
-   * Builds the cabin enclosure: interior roof headliner, framing A-pillars,
+   * Builds the cabin enclosure: full floor tub covering lower chassis,
+   * sealed firewall, interior roof headliner, framing A-pillars,
    * windshield sun strip visor banner, rearview mirror, wiper blades,
-   * and left door interior card.
+   * and left/right door interior cards.
    */
   private buildCockpitCabin(): void {
     const headlinerMat = new THREE.MeshStandardMaterial({
@@ -127,20 +129,31 @@ export class CockpitController {
       metalness: 0.95,
     });
 
-    // 1. Interior Roof Headliner (dark ceiling above driver)
+    // 1. Full-Width Interior Cabin Tub Floor (1.70m wide, completely covers red lowerBody in cockpit)
+    const cabinFloor = new THREE.Mesh(new THREE.BoxGeometry(1.70, 0.05, 1.40), trimMat);
+    cabinFloor.position.set(0, 0.395, -0.05);
+    this.group.add(cabinFloor);
+
+    // 2. Forward Firewall Bulkhead (seals engine compartment from cabin)
+    const firewall = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.42, 0.04), trimMat);
+    firewall.position.set(0, 0.38, 0.60);
+    this.group.add(firewall);
+
+    // 3. Interior Roof Headliner (dark ceiling above driver)
     const headliner = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.02, 0.92), headlinerMat);
-    headliner.position.set(0, 0.85, -0.18);
+    headliner.position.set(0, 0.88, -0.18);
     this.group.add(headliner);
 
-    // 2. Thick Interior Framing A-Pillars (left and right of windshield)
+    // 4. Thick Interior Framing A-Pillars (left and right of windshield)
     for (const ax of [-0.64, 0.64]) {
       const apillar = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.74), trimMat);
-      apillar.position.set(ax, 0.62, 0.38);
+      apillar.position.set(ax, 0.64, 0.42);
       apillar.rotation.x = -0.68;
       this.group.add(apillar);
     }
 
-    // 3. Windshield Sun Strip / Visor Banner ("APEX RALLY")
+    // 5. Windshield Sun Strip / Visor Banner ("APEX RALLY")
+    // Slim 9cm strip tucked at the very top of windshield glass so forward road view is wide open
     const bannerCanvas = createSafeCanvas(512, 64);
     let bannerTex: THREE.CanvasTexture | undefined;
     if (bannerCanvas) {
@@ -172,62 +185,63 @@ export class CockpitController {
       flatShading: true,
     });
 
-    const sunStrip = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.16, 0.012), visorMat);
-    sunStrip.position.set(0, 0.77, 0.24);
+    const sunStrip = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.09, 0.012), visorMat);
+    sunStrip.position.set(0, 0.83, 0.36);
     sunStrip.rotation.x = -0.68;
     this.group.add(sunStrip);
 
-    // 4. Interior Rearview Mirror (mounted at top center-right of windshield)
-    const mirrorStem = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 8), trimMat);
-    mirrorStem.position.set(0.12, 0.79, 0.24);
+    // 6. Interior Rearview Mirror (mounted at top center-right of windshield)
+    const mirrorStem = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.05, 8), trimMat);
+    mirrorStem.position.set(0.12, 0.82, 0.34);
     mirrorStem.rotation.x = 0.3;
     this.group.add(mirrorStem);
 
-    const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.02), trimMat);
-    mirrorHousing.position.set(0.12, 0.76, 0.25);
+    const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.05, 0.02), trimMat);
+    mirrorHousing.position.set(0.12, 0.79, 0.35);
     mirrorHousing.rotation.y = -0.22; // Angled toward left-hand driver
     mirrorHousing.rotation.x = -0.10;
 
-    const mirrorFace = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.05), mirrorGlassMat);
+    const mirrorFace = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.042), mirrorGlassMat);
     mirrorFace.position.set(0, 0, -0.011);
     mirrorFace.rotation.y = Math.PI;
     mirrorHousing.add(mirrorFace);
     this.group.add(mirrorHousing);
 
-    // 5. Dual Windshield Wiper Blades (resting at cowl base)
+    // 7. Dual Windshield Wiper Blades (resting at cowl base)
     const wiperMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.7 });
     for (const wx of [-0.36, 0.16]) {
       const wiperArm = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.012, 0.016), wiperMat);
-      wiperArm.position.set(wx + 0.18, 0.48, 0.60);
+      wiperArm.position.set(wx + 0.18, 0.44, 0.62);
       wiperArm.rotation.x = -0.68;
       wiperArm.rotation.z = -0.06;
       this.group.add(wiperArm);
     }
 
-    // 6. Left Interior Door Panel / Sill (driver side framing)
-    const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.38, 0.76), trimMat);
-    doorPanel.position.set(-0.66, 0.34, -0.05);
-    this.group.add(doorPanel);
+    // 8. Interior Door Panels (driver side and passenger side framing)
+    for (const dx of [-0.68, 0.68]) {
+      const doorPanel = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.38, 0.88), trimMat);
+      doorPanel.position.set(dx, 0.46, -0.05);
+      this.group.add(doorPanel);
+    }
 
     // Red nylon door pull strap
     const pullStrap = new THREE.Mesh(
       new THREE.BoxGeometry(0.01, 0.10, 0.03),
       new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.6 })
     );
-    pullStrap.position.set(-0.61, 0.42, 0.08);
+    pullStrap.position.set(-0.63, 0.48, 0.05);
     pullStrap.rotation.z = 0.2;
     this.group.add(pullStrap);
 
     // Subtle warm cabin ambient bounce light
-    const cabinLight = new THREE.PointLight(0xffedd5, 0.40, 2.8);
+    const cabinLight = new THREE.PointLight(0xfff7ed, 0.85, 3.2);
     cabinLight.position.set(-0.15, 0.70, 0.02);
     this.group.add(cabinLight);
   }
 
   /**
-   * Builds the tubular WRC roll cage with prominent diagonal crossbar across
-   * the windshield header, foam protective padding, and zip-tie retention wraps
-   * (matching reference image 2).
+   * Builds the tubular WRC roll cage with slim tubing tucked high along the windshield
+   * header and roofline (matching DiRT Rally reference images). No bulky pads blocking vision!
    */
   private buildRollCage(): void {
     const tubeMat = new THREE.MeshStandardMaterial({
@@ -237,29 +251,23 @@ export class CockpitController {
       flatShading: true,
     });
 
-    const paddingMat = new THREE.MeshStandardMaterial({
-      color: 0x27272a, // High-density black roll bar padding
-      roughness: 0.9,
-      flatShading: true,
-    });
-
     const strapMat = new THREE.MeshStandardMaterial({
-      color: 0xf4f4f5, // White retention straps / tie wraps
-      roughness: 0.4,
+      color: 0x27272a, // Slim dark motorsport zip-ties
+      roughness: 0.6,
     });
 
-    const tubeRadius = 0.020;
+    // Slim 12mm tube radius for clean visibility
+    const tubeRadius = 0.012;
 
-    // 1. Top Windshield Transverse Tube (running across upper windshield)
-    const topBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, 1.20, 8), tubeMat);
-    topBar.position.set(0, 0.82, 0.22);
+    // 1. Top Windshield Transverse Tube (running across upper windshield header)
+    const topBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, 1.22, 8), tubeMat);
+    topBar.position.set(0, 0.85, 0.38);
     topBar.rotation.z = Math.PI / 2;
     this.group.add(topBar);
 
-    // 2. Top Windshield Diagonal Crossbar (WRC signature element from Reference Image 2!)
-    // Runs diagonally across the upper windshield from (-0.58, 0.82, 0.22) to (+0.35, 0.72, 0.26)
-    const p1 = new THREE.Vector3(-0.58, 0.82, 0.22);
-    const p2 = new THREE.Vector3(0.35, 0.72, 0.26);
+    // 2. Windshield Header Diagonal Crossbar (WRC signature element tucked high against roof header)
+    const p1 = new THREE.Vector3(-0.58, 0.85, 0.38);
+    const p2 = new THREE.Vector3(0.42, 0.83, 0.40);
     const diagVec = p2.clone().sub(p1);
     const diagLen = diagVec.length();
 
@@ -268,25 +276,17 @@ export class CockpitController {
     diagBar.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), diagVec.clone().normalize());
     this.group.add(diagBar);
 
-    // Padded protective foam sleeve on the diagonal bar (center-left section)
-    const padLen = 0.42;
-    const padding = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.032, padLen, 8), paddingMat);
-    padding.position.copy(p1).lerp(p2, 0.38);
-    padding.quaternion.copy(diagBar.quaternion);
-    this.group.add(padding);
-
-    // Retention tie wraps around padding
-    for (const offset of [-0.14, 0.0, 0.14]) {
-      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.0335, 0.0335, 0.025, 8), strapMat);
-      const strapPos = padding.position.clone().addScaledVector(diagVec.clone().normalize(), offset);
-      strap.position.copy(strapPos);
+    // Slim motorsport tie wraps around the header tube (clean, non-intrusive)
+    for (const t of [0.25, 0.50, 0.75]) {
+      const strap = new THREE.Mesh(new THREE.CylinderGeometry(0.0135, 0.0135, 0.008, 8), strapMat);
+      strap.position.copy(p1).lerp(p2, t);
       strap.quaternion.copy(diagBar.quaternion);
       this.group.add(strap);
     }
 
     // 3. Left A-Pillar Down-tube
-    const aLeftP1 = new THREE.Vector3(-0.58, 0.82, 0.22);
-    const aLeftP2 = new THREE.Vector3(-0.62, 0.44, 0.52);
+    const aLeftP1 = new THREE.Vector3(-0.58, 0.85, 0.38);
+    const aLeftP2 = new THREE.Vector3(-0.62, 0.40, 0.54);
     const aLeftVec = aLeftP2.clone().sub(aLeftP1);
     const aLeftBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, aLeftVec.length(), 8), tubeMat);
     aLeftBar.position.copy(aLeftP1).lerp(aLeftP2, 0.5);
@@ -294,8 +294,8 @@ export class CockpitController {
     this.group.add(aLeftBar);
 
     // 4. Right A-Pillar Down-tube
-    const aRightP1 = new THREE.Vector3(0.58, 0.82, 0.22);
-    const aRightP2 = new THREE.Vector3(0.62, 0.44, 0.52);
+    const aRightP1 = new THREE.Vector3(0.58, 0.85, 0.38);
+    const aRightP2 = new THREE.Vector3(0.62, 0.40, 0.54);
     const aRightVec = aRightP2.clone().sub(aRightP1);
     const aRightBar = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, aRightVec.length(), 8), tubeMat);
     aRightBar.position.copy(aRightP1).lerp(aRightP2, 0.5);
@@ -303,8 +303,8 @@ export class CockpitController {
     this.group.add(aRightBar);
 
     // 5. Left Door Lateral Side-Protection Tube
-    const doorTube = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.72, 8), tubeMat);
-    doorTube.position.set(-0.64, 0.36, -0.05);
+    const doorTube = new THREE.Mesh(new THREE.CylinderGeometry(tubeRadius, tubeRadius, 0.72, 8), tubeMat);
+    doorTube.position.set(-0.64, 0.42, -0.10);
     doorTube.rotation.x = Math.PI / 2;
     this.group.add(doorTube);
   }
@@ -342,39 +342,57 @@ export class CockpitController {
       metalness: 0.4,
     });
 
-    // 1. Main Dashboard Upper Deck (sloping forward towards windshield base, forward of wheel)
-    const dashDeck = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.32), dashMat);
-    dashDeck.position.set(0, 0.40, 0.44);
-    dashDeck.rotation.x = -0.12;
+    // 1. Main Dashboard Upper Deck (wide alcantara plane covering forward interior up to windshield base)
+    const dashDeck = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.06, 0.38), dashMat);
+    dashDeck.position.set(0, 0.44, 0.44);
+    dashDeck.rotation.x = -0.10;
     this.group.add(dashDeck);
 
     // Lower Dashboard Vertical Knee Bolster
-    const dashLower = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.18, 0.06), dashMat);
-    dashLower.position.set(0, 0.28, 0.30);
+    const dashLower = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.22, 0.08), dashMat);
+    dashLower.position.set(0, 0.30, 0.26);
     this.group.add(dashLower);
 
-    // 2. Instrument Binnacle Cowl over driver's dials (forward of wheel at z = 0.30)
-    const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.10, 0.18), dashMat);
-    cowl.position.set(-0.32, 0.49, 0.30);
-    cowl.rotation.x = -0.10;
-    this.group.add(cowl);
+    // 2. Instrument Binnacle Eyebrow Hood (hollow arched cowl over driver's dials, NOT a solid box!)
+    const cowlRoof = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.015, 0.12), dashMat);
+    cowlRoof.position.set(-0.32, 0.56, 0.27);
+    cowlRoof.rotation.x = -0.15;
+    this.group.add(cowlRoof);
+
+    // Side cheeks of the binnacle cowl
+    const cheekGeom = new THREE.BoxGeometry(0.015, 0.09, 0.10);
+    const leftCheek = new THREE.Mesh(cheekGeom, dashMat);
+    leftCheek.position.set(-0.51, 0.51, 0.27);
+    leftCheek.rotation.x = -0.15;
+    this.group.add(leftCheek);
+
+    const rightCheek = new THREE.Mesh(cheekGeom, dashMat);
+    rightCheek.position.set(-0.13, 0.51, 0.27);
+    rightCheek.rotation.x = -0.15;
+    this.group.add(rightCheek);
+
+    // Cluster mounting backplate behind dials
+    const clusterBackplate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 0.015), dashMat);
+    clusterBackplate.position.set(-0.32, 0.50, 0.32);
+    clusterBackplate.rotation.x = -0.15;
+    this.group.add(clusterBackplate);
 
     // 3. Round Defroster Air Vents (Center and Passenger)
     for (const vx of [-0.06, 0.14, 0.48]) {
-      const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.030, 0.030, 0.010, 12), ventMat);
-      vent.position.set(vx, 0.42, 0.40);
+      const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.028, 0.028, 0.010, 12), ventMat);
+      vent.position.set(vx, 0.45, 0.40);
       vent.rotation.x = 0.35;
       this.group.add(vent);
 
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.030, 0.003, 8, 16), metalMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.003, 8, 16), metalMat);
       ring.position.copy(vent.position);
       ring.rotation.copy(vent.rotation);
       this.group.add(ring);
     }
 
     // 4. Center Console Sloping Down between Seats
-    const centerConsole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.20, 0.72), consoleMat);
-    centerConsole.position.set(0, 0.24, 0.05);
+    const centerConsole = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.18, 0.72), consoleMat);
+    centerConsole.position.set(0, 0.26, 0.05);
     centerConsole.rotation.x = -0.25;
     this.group.add(centerConsole);
 
@@ -383,7 +401,7 @@ export class CockpitController {
       new THREE.BoxGeometry(0.18, 0.14, 0.01),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.5, metalness: 0.5 })
     );
-    switchPanel.position.set(0, 0.36, 0.26);
+    switchPanel.position.set(0, 0.38, 0.26);
     switchPanel.rotation.x = -0.30;
     this.group.add(switchPanel);
 
@@ -392,41 +410,41 @@ export class CockpitController {
       new THREE.BoxGeometry(0.02, 0.03, 0.015),
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3 })
     );
-    flipCover.position.set(0, 0.37, 0.265);
+    flipCover.position.set(0, 0.39, 0.265);
     flipCover.rotation.x = -0.30;
     this.group.add(flipCover);
 
     // 5. Sequential Gear Shifter Pedestal & Lever
-    const shifterBase = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.045, 0.05, 8), consoleMat);
+    const shifterBase = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.042, 0.05, 8), consoleMat);
     shifterBase.position.copy(this.shifterPos);
     this.group.add(shifterBase);
 
-    this.shifterLever = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.22, 8), metalMat);
-    this.shifterLever.position.set(this.shifterPos.x, this.shifterPos.y + 0.10, this.shifterPos.z);
+    this.shifterLever = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.20, 8), metalMat);
+    this.shifterLever.position.set(this.shifterPos.x, this.shifterPos.y + 0.09, this.shifterPos.z);
     this.shifterLever.rotation.x = 0.12;
 
     const shiftKnob = new THREE.Mesh(
-      new THREE.SphereGeometry(0.022, 10, 10),
+      new THREE.SphereGeometry(0.020, 10, 10),
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.3 })
     );
-    shiftKnob.position.set(0, 0.11, 0);
+    shiftKnob.position.set(0, 0.10, 0);
     this.shifterLever.add(shiftKnob);
     this.group.add(this.shifterLever);
 
     // 6. Hydraulic Handbrake Vertical Wand
-    this.ebrakeLever = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, 0.26, 8), metalMat);
-    this.ebrakeLever.position.set(0.08, 0.38, 0.08);
+    this.ebrakeLever = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.24, 8), metalMat);
+    this.ebrakeLever.position.set(0.08, 0.37, 0.08);
     this.ebrakeLever.rotation.x = -0.22;
 
     const ebrakeGrip = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.015, 0.015, 0.11, 8),
+      new THREE.CylinderGeometry(0.014, 0.014, 0.10, 8),
       new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 })
     );
-    ebrakeGrip.position.set(0, 0.07, 0);
+    ebrakeGrip.position.set(0, 0.06, 0);
     this.ebrakeLever.add(ebrakeGrip);
     this.group.add(this.ebrakeLever);
 
-    // 7. Co-Driver Pace Notes Spiral Ring Binder (visible on passenger side dash!)
+    // 7. Co-Driver Pace Notes Spiral Ring Binder (visible on passenger side dash)
     const paceCanvas = createSafeCanvas(256, 256);
     let paceTex: THREE.CanvasTexture | undefined;
     if (paceCanvas) {
@@ -478,7 +496,7 @@ export class CockpitController {
     });
 
     const clipBoard = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.014, 0.28), notesMat);
-    clipBoard.position.set(0.14, 0.38, 0.30);
+    clipBoard.position.set(0.18, 0.42, 0.32);
     clipBoard.rotation.set(0.35, -0.20, 0.10);
     this.group.add(clipBoard);
   }
@@ -495,9 +513,9 @@ export class CockpitController {
     col.rotation.x = Math.PI / 3.4;
     this.group.add(col);
 
-    // Steering wheel group placed at wheel center, angled back ~28 degrees
+    // Steering wheel group placed at wheel center, angled back ~25 degrees
     this.steeringWheelGroup.position.copy(this.wheelCenter);
-    this.steeringWheelGroup.rotation.x = -Math.PI / 6.5;
+    this.steeringWheelGroup.rotation.x = -Math.PI / 7.2;
     this.steeringWheelGroup.name = 'steeringWheel'; // Required for test T1_R2_02
 
     const rimMat = new THREE.MeshStandardMaterial({
@@ -512,8 +530,8 @@ export class CockpitController {
       metalness: 0.85,
     });
 
-    // 1. Torus rim (diameter 33 cm -> radius 0.165m, tube 0.018m)
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.165, 0.018, 12, 32), rimMat);
+    // 1. Torus rim (diameter 31 cm -> radius 0.155m, tube 0.016m)
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.155, 0.016, 12, 32), rimMat);
     this.steeringWheelGroup.add(rim);
 
     // 2. Three alloy spokes (9 o'clock, 3 o'clock, 6 o'clock) with drill holes
@@ -522,14 +540,14 @@ export class CockpitController {
       spokeGroup.rotation.z = angle;
 
       // Main spoke arm
-      const spokeArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.024, 0.008), spokeMat);
-      spokeArm.position.set(0.07, 0, 0);
+      const spokeArm = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.022, 0.007), spokeMat);
+      spokeArm.position.set(0.065, 0, 0);
       spokeGroup.add(spokeArm);
 
       // Lightweight drilled rally holes (decorative dark cylinder rivets)
       const holeMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
-      for (const hx of [0.045, 0.075, 0.105]) {
-        const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.010, 8), holeMat);
+      for (const hx of [0.040, 0.068, 0.096]) {
+        const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, 0.009, 8), holeMat);
         hole.position.set(hx, 0, 0);
         hole.rotation.x = Math.PI / 2;
         spokeGroup.add(hole);
@@ -539,7 +557,7 @@ export class CockpitController {
     }
 
     // 3. Center horn button / rally hub
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.040, 0.020, 16), spokeMat);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.038, 0.018, 16), spokeMat);
     hub.rotateX(Math.PI / 2);
     this.steeringWheelGroup.add(hub);
 
@@ -576,16 +594,16 @@ export class CockpitController {
       roughness: 0.3,
       map: badgeTex,
     });
-    const badge = new THREE.Mesh(new THREE.CircleGeometry(0.028, 16), badgeMat);
-    badge.position.set(0, 0, 0.011);
+    const badge = new THREE.Mesh(new THREE.CircleGeometry(0.026, 16), badgeMat);
+    badge.position.set(0, 0, 0.010);
     this.steeringWheelGroup.add(badge);
 
     // 4. Rally yellow top centering stripe at 12 o'clock
     const stripe = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.019, 0.019, 0.032, 10),
+      new THREE.CylinderGeometry(0.017, 0.017, 0.030, 10),
       new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.3 })
     );
-    stripe.position.set(0, 0.165, 0);
+    stripe.position.set(0, 0.155, 0);
     this.steeringWheelGroup.add(stripe);
 
     this.group.add(this.steeringWheelGroup);
@@ -596,10 +614,10 @@ export class CockpitController {
    * digital red LED gear display on the A-pillar cowl, and multi-stage shift LED bar.
    */
   private buildAnalogGauges(): void {
-    const bezelMat = new THREE.MeshStandardMaterial({ color: 0x9ca3af, roughness: 0.3, metalness: 0.85 });
+    const bezelMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.25, metalness: 0.85 });
     const needleMat = new THREE.MeshBasicMaterial({ color: 0xef4444 }); // Fluorescent red
 
-    // 1. Tachometer (Left, x = -0.38, y = 0.46, z = 0.30)
+    // 1. Tachometer (Left dial, x = -0.38, y = 0.50, z = 0.28)
     const tachoCanvas = createSafeCanvas(256, 256);
     let tachoTex: THREE.CanvasTexture | undefined;
     if (tachoCanvas) {
@@ -609,6 +627,11 @@ export class CockpitController {
         tctx.beginPath();
         tctx.arc(128, 128, 126, 0, Math.PI * 2);
         tctx.fill();
+
+        // Outer white bezel ring on texture
+        tctx.strokeStyle = '#38bdf8';
+        tctx.lineWidth = 3;
+        tctx.stroke();
 
         // 0 to 8000 RPM sweep (-120 to +120 deg)
         for (let i = 0; i <= 8; i++) {
@@ -620,49 +643,53 @@ export class CockpitController {
           const y2 = 128 + Math.sin(rad) * 88;
 
           tctx.strokeStyle = i >= 7 ? '#ef4444' : i >= 6 ? '#facc15' : '#f8fafc';
-          tctx.lineWidth = i % 2 === 0 ? 4 : 2;
+          tctx.lineWidth = i % 2 === 0 ? 5 : 2;
           tctx.beginPath();
           tctx.moveTo(x1, y1);
           tctx.lineTo(x2, y2);
           tctx.stroke();
 
-          // Text numbers
-          const xt = 128 + Math.cos(rad) * 72;
-          const yt = 128 + Math.sin(rad) * 72;
+          // Dial numerals
+          const xt = 128 + Math.cos(rad) * 70;
+          const yt = 128 + Math.sin(rad) * 70;
           tctx.fillStyle = i >= 7 ? '#ef4444' : '#f8fafc';
-          tctx.font = 'bold 22px sans-serif';
+          tctx.font = 'bold 24px sans-serif';
           tctx.textAlign = 'center';
           tctx.textBaseline = 'middle';
           tctx.fillText(String(i), xt, yt);
         }
 
-        tctx.fillStyle = '#a1a1aa';
-        tctx.font = '14px sans-serif';
+        tctx.fillStyle = '#38bdf8';
+        tctx.font = 'bold 16px sans-serif';
+        tctx.textAlign = 'center';
         tctx.fillText('RPM x1000', 128, 168);
         tachoTex = new THREE.CanvasTexture(tachoCanvas);
       }
     }
 
-    const tachoFaceMat = new THREE.MeshBasicMaterial({ color: 0x09090b, map: tachoTex });
-    const tachoBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.015, 18), bezelMat);
-    tachoBezel.rotateX(Math.PI / 2.3);
-    tachoBezel.position.set(-0.38, 0.46, 0.30);
-    this.group.add(tachoBezel);
+    const tachoFaceMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      map: tachoTex,
+      side: THREE.DoubleSide,
+    });
+    const tachoFace = new THREE.Mesh(new THREE.CircleGeometry(0.046, 24), tachoFaceMat);
+    tachoFace.position.set(-0.38, 0.50, 0.28);
+    tachoFace.rotation.x = -0.15;
+    this.group.add(tachoFace);
 
-    const tachoFace = new THREE.Mesh(new THREE.CircleGeometry(0.046, 18), tachoFaceMat);
-    tachoFace.position.set(0, 0.009, 0);
-    tachoFace.rotateX(-Math.PI / 2);
-    tachoBezel.add(tachoFace);
+    const tachoRing = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.003, 8, 24), bezelMat);
+    tachoRing.position.copy(tachoFace.position);
+    tachoRing.rotation.copy(tachoFace.rotation);
+    this.group.add(tachoRing);
 
-    // Tachometer Needle (pivot at base)
+    // Tachometer Needle (pivot at center)
     const tachoNeedleGeom = new THREE.ConeGeometry(0.004, 0.036, 4);
     tachoNeedleGeom.translate(0, 0.018, 0);
     this.tachoNeedle = new THREE.Mesh(tachoNeedleGeom, needleMat);
-    this.tachoNeedle.position.set(0, 0.011, 0);
-    this.tachoNeedle.rotation.x = -Math.PI / 2;
-    tachoBezel.add(this.tachoNeedle);
+    this.tachoNeedle.position.set(0, 0, 0.003);
+    tachoFace.add(this.tachoNeedle);
 
-    // 2. Speedometer (Right, x = -0.26, y = 0.46, z = 0.30)
+    // 2. Speedometer (Right dial, x = -0.26, y = 0.50, z = 0.28)
     const speedoCanvas = createSafeCanvas(256, 256);
     let speedoTex: THREE.CanvasTexture | undefined;
     if (speedoCanvas) {
@@ -672,6 +699,10 @@ export class CockpitController {
         sctx.beginPath();
         sctx.arc(128, 128, 126, 0, Math.PI * 2);
         sctx.fill();
+
+        sctx.strokeStyle = '#38bdf8';
+        sctx.lineWidth = 3;
+        sctx.stroke();
 
         for (let i = 0; i <= 7; i++) {
           const mph = i * 20;
@@ -683,7 +714,7 @@ export class CockpitController {
           const y2 = 128 + Math.sin(rad) * 90;
 
           sctx.strokeStyle = '#f8fafc';
-          sctx.lineWidth = 3;
+          sctx.lineWidth = 4;
           sctx.beginPath();
           sctx.moveTo(x1, y1);
           sctx.lineTo(x2, y2);
@@ -698,33 +729,37 @@ export class CockpitController {
           sctx.fillText(String(mph), xt, yt);
         }
 
-        sctx.fillStyle = '#a1a1aa';
-        sctx.font = '14px sans-serif';
+        sctx.fillStyle = '#38bdf8';
+        sctx.font = 'bold 16px sans-serif';
+        sctx.textAlign = 'center';
         sctx.fillText('MPH', 128, 168);
         speedoTex = new THREE.CanvasTexture(speedoCanvas);
       }
     }
 
-    const speedoFaceMat = new THREE.MeshBasicMaterial({ color: 0x09090b, map: speedoTex });
-    const speedoBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.015, 18), bezelMat);
-    speedoBezel.rotateX(Math.PI / 2.3);
-    speedoBezel.position.set(-0.26, 0.46, 0.30);
-    this.group.add(speedoBezel);
+    const speedoFaceMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      map: speedoTex,
+      side: THREE.DoubleSide,
+    });
+    const speedoFace = new THREE.Mesh(new THREE.CircleGeometry(0.046, 24), speedoFaceMat);
+    speedoFace.position.set(-0.26, 0.50, 0.28);
+    speedoFace.rotation.x = -0.15;
+    this.group.add(speedoFace);
 
-    const speedoFace = new THREE.Mesh(new THREE.CircleGeometry(0.046, 18), speedoFaceMat);
-    speedoFace.position.set(0, 0.009, 0);
-    speedoFace.rotateX(-Math.PI / 2);
-    speedoBezel.add(speedoFace);
+    const speedoRing = new THREE.Mesh(new THREE.TorusGeometry(0.046, 0.003, 8, 24), bezelMat);
+    speedoRing.position.copy(speedoFace.position);
+    speedoRing.rotation.copy(speedoFace.rotation);
+    this.group.add(speedoRing);
 
     // Speedometer Needle
     const speedoNeedleGeom = new THREE.ConeGeometry(0.004, 0.036, 4);
     speedoNeedleGeom.translate(0, 0.018, 0);
     this.speedoNeedle = new THREE.Mesh(speedoNeedleGeom, needleMat);
-    this.speedoNeedle.position.set(0, 0.011, 0);
-    this.speedoNeedle.rotation.x = -Math.PI / 2;
-    speedoBezel.add(this.speedoNeedle);
+    this.speedoNeedle.position.set(0, 0, 0.003);
+    speedoFace.add(this.speedoNeedle);
 
-    // 3. Digital Red 7-Segment Gear Indicator Pod on Left A-Pillar Cowl (Reference Image 1!)
+    // 3. Digital Red 7-Segment Gear Indicator Pod on Left A-Pillar Cowl (Reference Image 1)
     const gearCanvas = createSafeCanvas(64, 64);
     if (gearCanvas) {
       this.gearCtx = gearCanvas.getContext('2d') || undefined;
@@ -732,32 +767,32 @@ export class CockpitController {
       this.drawGearDisplay(1);
     }
 
-    const gearPodMat = new THREE.MeshStandardMaterial({
-      color: 0x09090b,
-      roughness: 0.4,
-      metalness: 0.7,
+    const gearPodMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
       map: this.gearTex,
+      side: THREE.DoubleSide,
     });
 
-    const gearPod = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.020, 16), bezelMat);
-    gearPod.position.set(-0.46, 0.50, 0.26);
-    gearPod.rotation.x = 0.25;
-    gearPod.rotation.y = 0.28; // Angled directly toward driver eye
+    const gearPod = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.018, 16), bezelMat);
+    gearPod.position.set(-0.50, 0.52, 0.26);
+    gearPod.rotation.x = 0.20;
+    gearPod.rotation.y = 0.35; // Angled directly toward driver eye
     this.group.add(gearPod);
 
-    const gearFace = new THREE.Mesh(new THREE.CircleGeometry(0.022, 16), gearPodMat);
-    gearFace.position.set(0, 0.011, 0);
+    const gearFace = new THREE.Mesh(new THREE.CircleGeometry(0.020, 16), gearPodMat);
+    gearFace.position.set(0, 0.010, 0);
     gearFace.rotateX(-Math.PI / 2);
     gearPod.add(gearFace);
 
-    // 4. Multi-Stage Shift Warning Light LED Bar
+    // 4. Multi-Stage Shift Warning Light LED Bar on top of binnacle eyebrow
     this.shiftLedMat = new THREE.MeshStandardMaterial({
       color: 0x22c55e,
       emissive: new THREE.Color(0x22c55e),
-      emissiveIntensity: 0.2,
+      emissiveIntensity: 0.8,
     });
-    const shiftBar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.010, 0.010), this.shiftLedMat);
-    shiftBar.position.set(-0.32, 0.52, 0.30);
+    const shiftBar = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.010, 0.010), this.shiftLedMat);
+    shiftBar.position.set(-0.32, 0.57, 0.27);
+    shiftBar.rotation.x = -0.15;
     this.group.add(shiftBar);
   }
 
@@ -813,7 +848,7 @@ export class CockpitController {
     this.driverHead.add(visor);
 
     // Co-Driver / Navigator in passenger seat (x = +0.32)
-    const coDriverPos = new THREE.Vector3(0.32, 0.30, -0.18);
+    const coDriverPos = new THREE.Vector3(0.32, 0.28, -0.26);
     const coDriverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.40, 0.28), suitMat);
     coDriverTorso.position.set(coDriverPos.x, coDriverPos.y + 0.16, coDriverPos.z);
     coDriverTorso.rotation.x = -0.18;
@@ -829,8 +864,8 @@ export class CockpitController {
     coDriverHead.add(coVisor);
 
     // Left Arm Setup (Sleeve)
-    this.leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.036, this.upperArmLen, 8), suitMat);
-    this.leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.032, this.forearmLen, 8), suitMat);
+    this.leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.034, this.upperArmLen, 8), suitMat);
+    this.leftForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.030, this.forearmLen, 8), suitMat);
     this.group.add(this.leftUpperArm);
     this.group.add(this.leftForearm);
 
@@ -839,8 +874,8 @@ export class CockpitController {
     this.group.add(this.leftHandGroup);
 
     // Right Arm Setup (Sleeve)
-    this.rightUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.036, this.upperArmLen, 8), suitMat);
-    this.rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.032, this.forearmLen, 8), suitMat);
+    this.rightUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.034, this.upperArmLen, 8), suitMat);
+    this.rightForearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.030, this.forearmLen, 8), suitMat);
     this.group.add(this.rightUpperArm);
     this.group.add(this.rightForearm);
 
@@ -859,32 +894,32 @@ export class CockpitController {
     isLeft: boolean
   ): void {
     // 1. Palm / main hand body
-    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.042, 0.060), mainMat);
+    const palm = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.038, 0.055), mainMat);
     group.add(palm);
 
     // 2. Curled gripping fingers wrapping around wheel rim
-    const fingers = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.048, 8), mainMat);
-    fingers.position.set(0, -0.016, 0.022);
+    const fingers = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.044, 8), mainMat);
+    fingers.position.set(0, -0.015, 0.020);
     fingers.rotation.x = Math.PI / 2;
     group.add(fingers);
 
     // 3. Thumb hooked onto spoke/front face
-    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.008, 0.034, 8), mainMat);
-    thumb.position.set(isLeft ? 0.022 : -0.022, 0.012, 0.012);
+    const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.007, 0.030, 8), mainMat);
+    thumb.position.set(isLeft ? 0.020 : -0.020, 0.011, 0.011);
     thumb.rotation.z = isLeft ? -0.45 : 0.45;
     group.add(thumb);
 
-    // 4. Yellow silicone grip pad accent (Reference Images 1 & 2!)
-    const gripPatch = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.008, 0.038), accentMat);
-    gripPatch.position.set(0, 0.020, 0);
+    // 4. Yellow silicone grip pad accent (Reference Images 1 & 2)
+    const gripPatch = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.007, 0.034), accentMat);
+    gripPatch.position.set(0, 0.018, 0);
     group.add(gripPatch);
 
     // 5. White motorsport wrist cuff
     const cuff = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.034, 0.034, 0.020, 8),
+      new THREE.CylinderGeometry(0.032, 0.032, 0.018, 8),
       new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 })
     );
-    cuff.position.set(0, 0, -0.032);
+    cuff.position.set(0, 0, -0.030);
     cuff.rotation.x = Math.PI / 2;
     group.add(cuff);
   }
@@ -1050,7 +1085,7 @@ export class CockpitController {
 
     // 6. Update Driver Arm IK
     // Find world positions of 9 o'clock and 3 o'clock grips on the rotating wheel rim
-    const rimRadius = 0.160;
+    const rimRadius = 0.150;
     const currentWheelZRot = this.steeringWheelGroup.rotation.z;
 
     // Left hand target (9 o'clock = angle PI)
@@ -1076,7 +1111,7 @@ export class CockpitController {
     if (this.isShiftingAnim) {
       const shiftTarget = new THREE.Vector3(
         this.shifterPos.x,
-        this.shifterPos.y + 0.20,
+        this.shifterPos.y + 0.18,
         this.shifterPos.z
       );
       const shiftProgress = Math.sin((this.shiftTimer / this.shiftDuration) * Math.PI);
@@ -1090,7 +1125,7 @@ export class CockpitController {
       this.leftUpperArm,
       this.leftForearm,
       this.leftHandGroup,
-      new THREE.Vector3(-0.6, 0.4, -0.4) // Outward elbow bend
+      new THREE.Vector3(-0.6, -0.4, -0.4) // Natural down-outward elbow bend
     );
 
     this.solveTwoBoneIK(
@@ -1099,7 +1134,7 @@ export class CockpitController {
       this.rightUpperArm,
       this.rightForearm,
       this.rightHandGroup,
-      new THREE.Vector3(0.5, 0.3, -0.4)
+      new THREE.Vector3(0.6, -0.4, -0.4)
     );
 
     // Subtle head tilt into turns (lookahead)
@@ -1113,4 +1148,3 @@ export class CockpitController {
     }
   }
 }
-
