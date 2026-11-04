@@ -293,6 +293,8 @@ async function initGame() {
 
     if (inputs.cameraCycle) {
       const mode = camera.cycleMode();
+      vehicle.setCockpitViewMode(mode === 'COCKPIT_FPV');
+      cockpit.setCockpitViewMode(mode === 'COCKPIT_FPV');
       hud.setCameraMode?.(mode);
     }
     if (inputs.headlightToggle) {
@@ -391,13 +393,18 @@ async function initGame() {
     damageController.update(frameDt);
 
     const telemetry = vehicle.getTelemetry(inputs);
+    const isCockpit = camera.currentMode === 'COCKPIT_FPV';
+    vehicle.setCockpitViewMode(isCockpit);
+    cockpit.setCockpitViewMode(isCockpit);
     cockpit.update(frameDt, telemetry, inputs.steer);
     dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
     if (vehicle.chassisMesh) {
       wildlifeCrossing.update(frameDt, vehicle.chassisMesh.position);
     }
     coDriver.update(frameDt);
-    camera.update(vehicle, frameDt, inputs.steer);
+    if (!(window as any).__debugFreeCam) {
+      camera.update(vehicle, frameDt, inputs.steer);
+    }
 
     // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
     vehicleEffects.update(frameDt, inputs, camera.camera, sunLight);
@@ -407,12 +414,6 @@ async function initGame() {
       inputManager.playRumble(0.06, Math.min(0.5, Math.abs(vehicle.driftAngleDeg) / 45), 70);
     }
 
-    // Follow vehicle with directional sunlight shadow camera
-    if (vehicle.chassisMesh) {
-      const carPos = vehicle.chassisMesh.position;
-      sunLight.position.set(carPos.x + 40, carPos.y + 60, carPos.z - 30);
-      sunLight.target.position.copy(carPos);
-    }
 
     if (inputs.reset) {
       stageManager.restart();

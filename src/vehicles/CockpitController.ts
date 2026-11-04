@@ -38,14 +38,14 @@ export class CockpitController {
   private prevGear: number | string = 1;
 
   // Positions relative to car chassis origin
-  // Driver sits on left: x = -0.32, y = 0.42, z = -0.15
-  private readonly driverPos = new THREE.Vector3(-0.32, 0.44, -0.18);
-  private readonly wheelCenter = new THREE.Vector3(-0.32, 0.58, 0.22);
-  private readonly shifterPos = new THREE.Vector3(0.0, 0.32, 0.12);
+  // Driver sits on left: x = -0.32, y = 0.30, z = -0.18
+  private readonly driverPos = new THREE.Vector3(-0.32, 0.30, -0.18);
+  private readonly wheelCenter = new THREE.Vector3(-0.32, 0.48, 0.26);
+  private readonly shifterPos = new THREE.Vector3(0.0, 0.24, 0.12);
 
   // Arm joint anchor offsets from driver torso
-  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.62, -0.16);
-  private readonly rightShoulder = new THREE.Vector3(-0.16, 0.62, -0.16);
+  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.50, -0.16);
+  private readonly rightShoulder = new THREE.Vector3(-0.16, 0.50, -0.16);
 
   // Fixed 2-bone lengths
   private readonly upperArmLen = 0.28;
@@ -58,6 +58,13 @@ export class CockpitController {
     this.buildDriverRig();
 
     this.carGroup.add(this.group);
+  }
+
+  public setCockpitViewMode(isCockpit: boolean): void {
+    if (this.driverHead) this.driverHead.visible = !isCockpit;
+    if (this.driverTorso) this.driverTorso.visible = !isCockpit;
+    if (this.leftUpperArm) this.leftUpperArm.visible = !isCockpit;
+    if (this.rightUpperArm) this.rightUpperArm.visible = !isCockpit;
   }
 
   private buildCockpitInterior(): void {
@@ -82,17 +89,22 @@ export class CockpitController {
       flatShading: true,
     });
 
-    // 1. Dashboard structure spanning beneath windshield
-    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.24, 0.42), dashMat);
-    dash.position.set(0, 0.52, 0.36);
-    dash.rotation.x = -0.15;
+    // 1. Dashboard structure spanning beneath windshield (lowered for panoramic road visibility)
+    const dash = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.22, 0.42), dashMat);
+    dash.position.set(0, 0.44, 0.36);
+    dash.rotation.x = -0.12;
     this.group.add(dash);
 
     // Instrument binnacle cowl over driver side (x = -0.32)
-    const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.14, 0.26), dashMat);
-    cowl.position.set(-0.32, 0.62, 0.30);
-    cowl.rotation.x = -0.18;
+    const cowl = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.12, 0.26), dashMat);
+    cowl.position.set(-0.32, 0.54, 0.30);
+    cowl.rotation.x = -0.15;
     this.group.add(cowl);
+
+    // Warm cabin interior ambient light so cockpit is never pitch black
+    const cabinLight = new THREE.PointLight(0xffedd5, 0.85, 2.5);
+    cabinLight.position.set(-0.32, 0.72, 0.10);
+    this.group.add(cabinLight);
 
     // 2. Center console sloping down between bucket seats
     const centerConsole = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 0.72), consoleMat);
@@ -183,10 +195,10 @@ export class CockpitController {
     const needleMat = new THREE.MeshBasicMaterial({ color: 0xef4444 }); // Fluorescent red
 
     // Gauges sitting in instrument cluster behind wheel (z = 0.32)
-    // 1. Tachometer (Left, x = -0.38, y = 0.60)
+    // 1. Tachometer (Left, x = -0.38, y = 0.50)
     const tachoBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.015, 16), bezelMat);
     tachoBezel.rotateX(Math.PI / 2.3);
-    tachoBezel.position.set(-0.38, 0.60, 0.33);
+    tachoBezel.position.set(-0.38, 0.50, 0.33);
     this.group.add(tachoBezel);
 
     const tachoFace = new THREE.Mesh(new THREE.CircleGeometry(0.048, 16), dialFaceMat);
@@ -202,10 +214,10 @@ export class CockpitController {
     this.tachoNeedle.rotation.x = -Math.PI / 2;
     tachoBezel.add(this.tachoNeedle);
 
-    // 2. Speedometer (Right, x = -0.26, y = 0.60)
+    // 2. Speedometer (Right, x = -0.26, y = 0.50)
     const speedoBezel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.015, 16), bezelMat);
     speedoBezel.rotateX(Math.PI / 2.3);
-    speedoBezel.position.set(-0.26, 0.60, 0.33);
+    speedoBezel.position.set(-0.26, 0.50, 0.33);
     this.group.add(speedoBezel);
 
     const speedoFace = new THREE.Mesh(new THREE.CircleGeometry(0.048, 16), dialFaceMat);
@@ -249,19 +261,42 @@ export class CockpitController {
     });
 
     // Driver Torso seated in bucket seat
-    this.driverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.44, 0.28), suitMat);
-    this.driverTorso.position.set(this.driverPos.x, this.driverPos.y + 0.18, this.driverPos.z);
+    this.driverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.40, 0.28), suitMat);
+    this.driverTorso.position.set(this.driverPos.x, this.driverPos.y + 0.16, this.driverPos.z);
     this.driverTorso.rotation.x = -0.18; // Lean slightly back in bucket seat
     this.group.add(this.driverTorso);
 
     // Driver Racing Helmet & Visor
-    this.driverHead = new THREE.Mesh(new THREE.SphereGeometry(0.125, 12, 10), helmetMat);
-    this.driverHead.position.set(this.driverPos.x, this.driverPos.y + 0.46, this.driverPos.z + 0.02);
+    this.driverHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), helmetMat);
+    this.driverHead.position.set(this.driverPos.x, this.driverPos.y + 0.38, this.driverPos.z + 0.02);
     this.group.add(this.driverHead);
 
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.09), visorMat);
     visor.position.set(0, 0.01, 0.08);
     this.driverHead.add(visor);
+
+    // Co-Driver / Navigator seated in passenger seat (x = +0.32)
+    const coDriverPos = new THREE.Vector3(0.32, 0.30, -0.18);
+    const coDriverTorso = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.40, 0.28), suitMat);
+    coDriverTorso.position.set(coDriverPos.x, coDriverPos.y + 0.16, coDriverPos.z);
+    coDriverTorso.rotation.x = -0.18;
+    this.group.add(coDriverTorso);
+
+    const coDriverHead = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), helmetMat);
+    coDriverHead.position.set(coDriverPos.x, coDriverPos.y + 0.38, coDriverPos.z + 0.02);
+    coDriverHead.rotation.y = -0.22;
+    this.group.add(coDriverHead);
+
+    const coVisor = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.09), visorMat);
+    coVisor.position.set(0, 0.01, 0.08);
+    coDriverHead.add(coVisor);
+
+    // Co-Driver pacenote binder held in lap
+    const notesMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.9 });
+    const clipBoard = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.02, 0.26), notesMat);
+    clipBoard.position.set(coDriverPos.x, coDriverPos.y + 0.22, coDriverPos.z + 0.22);
+    clipBoard.rotation.x = 0.45;
+    this.group.add(clipBoard);
 
     // Left Arm Setup
     this.leftUpperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.035, this.upperArmLen, 6), suitMat);

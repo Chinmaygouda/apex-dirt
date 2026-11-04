@@ -52,9 +52,26 @@ export class VehicleDamageController {
     }
 
     geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+    let pTexture: THREE.CanvasTexture | undefined;
+    if (typeof document !== 'undefined') {
+      const pCanvas = document.createElement('canvas');
+      pCanvas.width = 32;
+      pCanvas.height = 32;
+      const pCtx = pCanvas.getContext('2d')!;
+      const grad = pCtx.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+      grad.addColorStop(0.4, 'rgba(230, 230, 230, 0.4)');
+      grad.addColorStop(1, 'rgba(200, 200, 200, 0.0)');
+      pCtx.fillStyle = grad;
+      pCtx.fillRect(0, 0, 32, 32);
+      pTexture = new THREE.CanvasTexture(pCanvas);
+    }
+
     const mat = new THREE.PointsMaterial({
       color: 0xeeeeee,
-      size: 0.28,
+      size: 0.35,
+      map: pTexture,
       transparent: true,
       opacity: 0.0,
       depthWrite: false,
@@ -70,6 +87,9 @@ export class VehicleDamageController {
   }
 
   public handleCollision(event: ICollisionContactEvent): void {
+    // Normal road driving or ground contacts must NEVER puncture radiator or detach car body panels
+    if (event.collidedEntity === 'terrain' || !event.collidedEntity) return;
+
     const J = event.impulseMagnitude;
     if (J < 1800) return;
 

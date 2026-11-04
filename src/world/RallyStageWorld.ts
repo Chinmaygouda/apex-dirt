@@ -286,23 +286,32 @@ export class RallyStageWorld {
     for (let c = 0; c < numColliders; c++) {
       const u = c / numColliders;
       const pt = this.spline.getPointAt(u);
-      const tang = this.spline.getTangentAt(u).normalize();
       const uNext = Math.min(1.0, u + 1 / numColliders);
       const ptNext = this.spline.getPointAt(uNext);
 
       const center = pt.clone().add(ptNext).multiplyScalar(0.5);
       const segLen = pt.distanceTo(ptNext);
 
-      const bodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(center.x, center.y - 0.35, center.z);
+      const sample = this.samples[Math.floor(u * this.numSamples) % this.numSamples];
+      const tang = ptNext.clone().sub(pt).normalize();
+      const norm = sample.normal;
+      const binorm = new THREE.Vector3().crossVectors(norm, tang).normalize();
+      const trueNorm = new THREE.Vector3().crossVectors(tang, binorm).normalize();
+
+      // Top surface of box matches road elevation center:
+      // Offset center downward along trueNorm by half-height 0.35m
+      const boxCenter = center.clone().addScaledVector(trueNorm, -0.35);
+
+      const bodyDesc = rapier.RigidBodyDesc.fixed().setTranslation(boxCenter.x, boxCenter.y, boxCenter.z);
       const body = this.physics.world.createRigidBody(bodyDesc);
 
-      // Orient cuboid along road tangent
-      const angleY = Math.atan2(tang.x, tang.z);
-      const qY = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), angleY);
-      body.setRotation({ x: qY.x, y: qY.y, z: qY.z, w: qY.w }, true);
+      // Full 3D orientation matching road tangent, banking, and pitch grade!
+      const rotMat = new THREE.Matrix4().makeBasis(binorm, trueNorm, tang);
+      const q = new THREE.Quaternion().setFromRotationMatrix(rotMat);
+      body.setRotation({ x: q.x, y: q.y, z: q.z, w: q.w }, true);
 
-      // Width covers road + verges (14m), height 0.7m
-      const colDesc = rapier.ColliderDesc.cuboid(7.0, 0.35, segLen * 0.58)
+      // Width covers road + verges (14m), height 0.7m (half-height 0.35m), length segLen * 0.505
+      const colDesc = rapier.ColliderDesc.cuboid(7.0, 0.35, segLen * 0.505)
         .setFriction(0.9)
         .setRestitution(0.0)
         .setCollisionGroups((0x0001 << 16) | 0xffff);
@@ -388,13 +397,41 @@ export class RallyStageWorld {
       const tang = this.spline.getTangentAt(u).normalize();
       const binormal = new THREE.Vector3().crossVectors(tang, new THREE.Vector3(0, 1, 0)).normalize();
 
-      // Side & distance: dedicated roadside margin (7.5m - 12.0m) for t % 8 == 0, deep forest for others
+      // Side & distance: dedicated roadside margin (12.5m - 16.5m) for t % 8 == 0, deep forest for others
       const side = (t % 2 === 0 ? 1 : -1);
       const pseudo1 = Math.abs(Math.sin(t * 12.9898 + 0.123));
       const pseudo2 = Math.abs(Math.cos(t * 4.1415 + 0.456));
-      const distFromRoad = (t % 8 === 0) ? (7.5 + pseudo1 * 4.5) : (11.0 + (t % 11) * 3.0 + pseudo1 * 22.0);
-      const x = pt.x + binormal.x * (side * distFromRoad);
-      const z = pt.z + binormal.z * (side * distFromRoad);
+      let distFromRoad = (t % 8 === 0) ? (12.5 + pseudo1 * 4.0) : (16.0 + (t % 11) * 3.5 + pseudo1 * 26.0);
+      let x = pt.x + binormal.x * (side * distFromRoad);
+      let z = pt.z + binormal.z * (side * distFromRoad);
+
+      // Strict Track Clearance Verification:
+      // Ensure candidate tree (x, z) is at least 11.5m away from ANY road sample point!
+      let tooClose = true;
+      let attempts = 0;
+      while (tooClose && attempts < 8) {
+        tooClose = false;
+        for (let s = 0; s < this.samples.length; s += 2) {
+          const sp = this.samples[s].point;
+          const dx = x - sp.x;
+          const dz = z - sp.z;
+          if (dx * dx + dz * dz < 11.5 * 11.5) { // 11.5m clearance guarantees 7.7m wide clear verge
+            tooClose = true;
+            break;
+          }
+        }
+        if (tooClose) {
+          distFromRoad += 6.5;
+          x = pt.x + binormal.x * (side * distFromRoad);
+          z = pt.z + binormal.z * (side * distFromRoad);
+          attempts++;
+        }
+      }
+
+      if (tooClose) {
+        continue;
+      }
+
       const y = pt.y - 0.2; // Anchored in terrain
 
       const scale = 0.8 + (t % 5) * 0.12 + pseudo2 * 0.2;
@@ -414,8 +451,9 @@ export class RallyStageWorld {
         broadIdx++;
       }
 
-      // Add static Rapier collider for roadside trees within corridor distance (distFromRoad < 13.0m)
-      if (distFromRoad < 13.0) {
+      // Add static Rapier collider for roadside trees (distFromRoad <= 17.5m, tree count up to 62)
+      const currentTreeColliders = this.roadsideColliders.filter(c => c.entity === 'tree').length;
+      if (distFromRoad <= 17.5 && currentTreeColliders < 62) {
         const rapier = this.physics.rapier;
         const trunkH = (t % 5 !== 0) ? 1.6 * scale : 1.8 * scale;
         const trunkR = (t % 5 !== 0) ? 0.42 * scale : 0.55 * scale;

@@ -22,8 +22,8 @@ export class CameraManager {
   public set maxSpeedFov(v: number) { this.chaseCam.maxSpeedFov = v; }
   private headLookOffset = new THREE.Vector3();
 
-  // Cockpit local eye position (Driver seat left side, eye height)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.68, -0.14);
+  // Cockpit local eye position (Driver seat left side, driver eye height looking through windscreen)
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.70, -0.02);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -56,6 +56,9 @@ export class CameraManager {
   public update(vehicle: CustomRallyVehicle, dt: number, steerInput: number = 0): void {
     if (!vehicle.chassisMesh || !vehicle.chassisBody) return;
 
+    // Ensure vehicle and cockpit hide view-obscuring meshes when in Cockpit FPV mode
+    vehicle.setCockpitViewMode(this.currentMode === 'COCKPIT_FPV');
+
     if (this.currentMode === 'CHASE') {
       this.chaseCam.update(vehicle, dt);
       return;
@@ -81,13 +84,13 @@ export class CameraManager {
       const worldEye = this.cockpitEyeOffset.clone().applyQuaternion(chassisQuat).add(chassisPos);
       this.camera.position.copy(worldEye);
 
-      // Look direction: forward + slight lookahead into turn
+      // Look direction: forward + slight lookahead into turn, looking down at road line
       const targetLookYaw = -steerInput * 0.35;
       const lookOffset = right.clone().multiplyScalar(Math.sin(targetLookYaw))
         .add(forward.clone().multiplyScalar(Math.cos(targetLookYaw)))
         .multiplyScalar(25.0);
 
-      const lookTarget = worldEye.clone().add(lookOffset).addScaledVector(up, 0.2);
+      const lookTarget = worldEye.clone().add(lookOffset).addScaledVector(up, -0.08);
       this.camera.lookAt(lookTarget);
       this.camera.up.copy(up);
 

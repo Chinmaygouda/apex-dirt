@@ -121,6 +121,13 @@ export class CustomRallyVehicle {
   public frontBumperGroup!: THREE.Group;
   public hoodGroup!: THREE.Group;
   public rearWingGroup!: THREE.Group;
+  public cockpitObscuringMeshes: THREE.Object3D[] = [];
+
+  public setCockpitViewMode(isCockpit: boolean): void {
+    for (const m of this.cockpitObscuringMeshes) {
+      m.visible = !isCockpit;
+    }
+  }
 
   // Visual materials
   private brakeLightMat!: THREE.MeshBasicMaterial;
@@ -1546,6 +1553,79 @@ export class CustomRallyVehicle {
       this.hoodGroup.add(louver);
     }
 
+    // Central turbo intercooler hood scoop
+    const scoopMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.7, flatShading: true });
+    const hoodScoop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.44), scoopMat);
+    hoodScoop.position.set(0, 0.43, 1.30);
+    this.hoodGroup.add(hoodScoop);
+
+    const scoopIntake = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.05), exhaustBoreMat);
+    scoopIntake.position.set(0, 0.43, 1.52);
+    this.hoodGroup.add(scoopIntake);
+
+    // Rally competition livery stripes (Alpine white)
+    const liveryMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.3,
+      metalness: 0.2,
+      flatShading: true,
+    });
+
+    const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 1.28), liveryMat);
+    hoodStripe.position.set(0, 0.422, 1.28);
+    hoodStripe.rotation.x = 0.04;
+    this.hoodGroup.add(hoodStripe);
+
+    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 0.94), liveryMat);
+    roofStripe.position.set(0, 0.892, -0.25);
+    this.chassisMainGroup.add(roofStripe);
+    this.cockpitObscuringMeshes.push(roofStripe);
+
+    // Door competition lower rocker accent decals
+    for (const sx of [-0.852, 0.852]) {
+      const doorStripe = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.07, 1.95), liveryMat);
+      doorStripe.position.set(sx, 0.16, 0.0);
+      this.chassisMainGroup.add(doorStripe);
+    }
+
+    // Aerodynamic rally side-view mirrors
+    for (const sx of [-0.75, 0.75]) {
+      const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.025), trimMat);
+      mirrorStem.position.set(sx, 0.54, 0.42);
+      this.chassisMainGroup.add(mirrorStem);
+
+      const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.14), bodyMat);
+      mirrorHousing.position.set(sx > 0 ? sx + 0.04 : sx - 0.04, 0.54, 0.42);
+      this.chassisMainGroup.add(mirrorHousing);
+
+      const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        metalness: 0.95,
+        roughness: 0.05,
+      }));
+      mirrorGlass.position.set(sx > 0 ? sx + 0.072 : sx - 0.072, 0.54, 0.42);
+      mirrorGlass.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2;
+      this.chassisMainGroup.add(mirrorGlass);
+    }
+
+    // Polyurethane WRC mudflaps behind all four wheels
+    const mudflapMat = new THREE.MeshStandardMaterial({
+      color: 0xb91c1c, // Rally red mudflaps
+      roughness: 0.6,
+      metalness: 0.1,
+      flatShading: true,
+    });
+    for (const sx of [-0.89, 0.89]) {
+      const frontMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.02), mudflapMat);
+      frontMudflap.position.set(sx, 0.04, 0.82);
+      this.chassisMainGroup.add(frontMudflap);
+    }
+    for (const sx of [-0.91, 0.91]) {
+      const rearMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.02), mudflapMat);
+      rearMudflap.position.set(sx, 0.04, -1.98);
+      this.chassisMainGroup.add(rearMudflap);
+    }
+
     // =========================================================================
     // 2. COUPE GREENHOUSE & SLOPED FASTBACK REAR WINDOW
     // =========================================================================
@@ -1574,6 +1654,8 @@ export class CustomRallyVehicle {
     const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.34), trimMat);
     roofScoop.position.set(0, 0.915, -0.05);
     this.chassisMainGroup.add(roofScoop);
+
+    this.cockpitObscuringMeshes.push(roof, roofScoop, windshield);
 
     // SLOPED REAR FASTBACK WINDOW (Coupe Silhouette Key Element)
     // Long aerodynamic fastback glass sweeping down from roof to trunk deck
@@ -1904,7 +1986,7 @@ export class CustomRallyVehicle {
   }
 
   private createWheelVisuals(): void {
-    const tireGeom = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.28, 12);
+    const tireGeom = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.28, 16);
     tireGeom.rotateZ(Math.PI / 2);
 
     const tireMat = new THREE.MeshStandardMaterial({
@@ -1914,14 +1996,21 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
-    const rimGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.62, this.wheelRadius * 0.62, 0.29, 8);
+    const rimGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.64, this.wheelRadius * 0.64, 0.29, 16);
     rimGeom.rotateZ(Math.PI / 2);
     const rimMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      roughness: 0.3,
-      metalness: 0.7,
+      color: 0xf8fafc, // OZ-Racing Alpine white rally rims
+      roughness: 0.25,
+      metalness: 0.35,
       flatShading: true,
     });
+
+    const caliperMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626, // Brembo red brake calipers
+      roughness: 0.3,
+      metalness: 0.6,
+    });
+    const caliperGeom = new THREE.BoxGeometry(0.08, 0.14, 0.06);
 
     for (let i = 0; i < 4; i++) {
       const wheelGroup = new THREE.Group();
@@ -1931,6 +2020,18 @@ export class CustomRallyVehicle {
 
       const rim = new THREE.Mesh(rimGeom, rimMat);
       wheelGroup.add(rim);
+
+      // Center lug nut hub cap
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.30, 8), capMat);
+      cap.rotateZ(Math.PI / 2);
+      wheelGroup.add(cap);
+
+      // Red brake caliper sitting behind wheel
+      const caliper = new THREE.Mesh(caliperGeom, caliperMat);
+      const isRight = (i % 2 === 1);
+      caliper.position.set(isRight ? -0.06 : 0.06, 0.12, 0.0);
+      wheelGroup.add(caliper);
 
       this.scene.add(wheelGroup);
       this.wheelMeshes.push(wheelGroup);

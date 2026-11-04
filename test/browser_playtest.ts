@@ -274,6 +274,11 @@ async function runBrowserPlaytest() {
     }
     console.log('  [PASS] Initial camera mode confirmed: CHASE');
 
+    // Capture Chase Camera Screenshot
+    const shotChase = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_chase_view.png', Buffer.from(shotChase.data, 'base64'));
+    console.log('  [SCREENSHOT] Saved browser_chase_view.png');
+
     // Cycle camera to Cockpit FPV via Key 'C'
     await client.dispatchKeyEvent('keyDown', 'c', 'KeyC');
     await sleep(50);
@@ -286,6 +291,11 @@ async function runBrowserPlaytest() {
     }
     console.log('  [PASS] Camera successfully cycled to COCKPIT_FPV via Key "C"');
 
+    // Capture Cockpit FPV Screenshot
+    const shotCockpit = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_cockpit_fpv.png', Buffer.from(shotCockpit.data, 'base64'));
+    console.log('  [SCREENSHOT] Saved browser_cockpit_fpv.png');
+
     // Cycle camera to Hood via Key 'C'
     await client.dispatchKeyEvent('keyDown', 'c', 'KeyC');
     await sleep(50);
@@ -297,6 +307,11 @@ async function runBrowserPlaytest() {
       throw new Error(`Expected camera mode HOOD after 2nd Key 'C', got ${modeAfterC2}`);
     }
     console.log('  [PASS] Camera successfully cycled to HOOD view via Key "C"');
+
+    // Capture Hood View Screenshot
+    const shotHood = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_hood_view.png', Buffer.from(shotHood.data, 'base64'));
+    console.log('  [SCREENSHOT] Saved browser_hood_view.png');
 
     // 8. Verify Headlight Toggle (Key 'L')
     const initialHeadlights = await client.evaluate(`window.headlightController.isOn`);
@@ -336,6 +351,20 @@ async function runBrowserPlaytest() {
       throw new Error('Driving telemetry did not update during driving inputs');
     }
     console.log('  [PASS] Driving controls executed with responsive vehicle physics');
+
+    // 10. Capture Aerial Top-Down Track Overview
+    await client.evaluate(`
+      window.__debugFreeCam = true;
+      const cam = window.cameraManager.camera;
+      cam.position.set(0, 140, 60);
+      cam.lookAt(0, 0, 80);
+      cam.updateProjectionMatrix();
+    `);
+    await sleep(250);
+    const shotTop = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_track_top_view.png', Buffer.from(shotTop.data, 'base64'));
+    console.log('  [SCREENSHOT] Saved browser_track_top_view.png');
+    await client.evaluate(`window.__debugFreeCam = false;`);
 
     // 10. Verify Zero Uncaught Fatal Exceptions
     if (client.uncaughtExceptions.length > 0) {
