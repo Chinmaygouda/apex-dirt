@@ -1832,6 +1832,28 @@ export class CustomRallyVehicle {
     frontSplitter.position.set(0, 0.01, 2.06);
     this.frontBumperGroup.add(frontSplitter);
 
+    // Aerodynamic front dive planes / canards & splitter support turnbuckles
+    const strutMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.3, metalness: 0.8 });
+    for (const cx of [-0.88, 0.88]) {
+      // Upper corner canard
+      const canardUpper = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.18), trimMat);
+      canardUpper.position.set(cx, 0.22, 2.05);
+      canardUpper.rotation.set(-0.25, cx > 0 ? -0.35 : 0.35, cx > 0 ? 0.15 : -0.15);
+      this.frontBumperGroup.add(canardUpper);
+
+      // Lower corner canard
+      const canardLower = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.20), trimMat);
+      canardLower.position.set(cx, 0.12, 2.08);
+      canardLower.rotation.set(-0.25, cx > 0 ? -0.35 : 0.35, cx > 0 ? 0.15 : -0.15);
+      this.frontBumperGroup.add(canardLower);
+
+      // Splitter tie-rod / turnbuckle strut
+      const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.18, 8), strutMat);
+      strut.position.set(cx * 0.45, 0.08, 2.14);
+      strut.rotation.x = -0.35;
+      this.frontBumperGroup.add(strut);
+    }
+
     // Front center radiator intake air dam
     const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
     radiatorGrille.position.set(0, 0.13, 2.155);
@@ -1896,6 +1918,23 @@ export class CustomRallyVehicle {
       this.chassisMainGroup.add(strake);
     }
 
+    // Center FIA rally rain light beacon
+    const rainLightMat = new THREE.MeshStandardMaterial({
+      color: 0xef4444,
+      emissive: new THREE.Color(0xef4444),
+      emissiveIntensity: 0.9,
+      flatShading: true,
+    });
+    const rainLight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.03), rainLightMat);
+    rainLight.position.set(0, -0.04, -2.15);
+    this.chassisMainGroup.add(rainLight);
+
+    // Integrated ducktail lip spoiler on trunk deck
+    const ducktailLip = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.06, 0.08), trimMat);
+    ducktailLip.position.set(0, 0.50, -1.98);
+    ducktailLip.rotation.x = -0.25;
+    this.chassisMainGroup.add(ducktailLip);
+
     // Heat shield plate above exhaust tips
     const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.14), bashPlateMat);
     heatShield.position.set(0.53, 0.05, -2.132);
@@ -1920,6 +1959,17 @@ export class CustomRallyVehicle {
       bore.rotateX(Math.PI / 2);
       bore.position.set(ex, -0.04, -2.205);
       this.chassisMainGroup.add(bore);
+
+      // Burnt titanium blue scorch tip ring
+      const tiMat = new THREE.MeshStandardMaterial({
+        color: 0x2563eb,
+        roughness: 0.25,
+        metalness: 0.85,
+      });
+      const tiRing = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.03, 16), tiMat);
+      tiRing.rotateX(Math.PI / 2);
+      tiRing.position.set(ex, -0.04, -2.21);
+      this.chassisMainGroup.add(tiRing);
     }
 
     // =========================================================================

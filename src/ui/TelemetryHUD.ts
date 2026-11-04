@@ -5,7 +5,6 @@ import { StageManager, PaceNote } from '../gameplay/StageManager';
 
 export class TelemetryHUD {
   private container: HTMLElement;
-  private stageTitleEl!: HTMLElement;
   private timerEl!: HTMLElement;
   private gateEl!: HTMLElement;
   private bestTimeEl!: HTMLElement;
@@ -423,15 +422,14 @@ export class TelemetryHUD {
     const topBanner = document.createElement('div');
     topBanner.className = 'hud-top-banner';
     topBanner.innerHTML = `
-      <div class="hud-stage-title" id="hud-stage-title">APEX PROVING GROUND &bull; VEHICLE DYNAMICS</div>
+      <div class="hud-stage-title">STAGE 1 &bull; ALPINE PASS</div>
       <div class="hud-timer-row">
         <div class="hud-timer" id="hud-timer">00:00.00</div>
-        <div class="hud-gate-badge" id="hud-gate">DYNAMICS TEST</div>
+        <div class="hud-gate-badge" id="hud-gate">GATE 1 OF 20</div>
       </div>
-      <div class="hud-best-time" id="hud-best-time">GRID: 2.5m x 2.5m TARMAC</div>
+      <div class="hud-best-time" id="hud-best-time">BEST: --:--.--</div>
     `;
     this.container.appendChild(topBanner);
-    this.stageTitleEl = topBanner.querySelector('#hud-stage-title') as HTMLElement;
     this.timerEl = topBanner.querySelector('#hud-timer') as HTMLElement;
     this.gateEl = topBanner.querySelector('#hud-gate') as HTMLElement;
     this.bestTimeEl = topBanner.querySelector('#hud-best-time') as HTMLElement;
@@ -453,7 +451,6 @@ export class TelemetryHUD {
       <div class="pace-text" id="pace-text">FLAT OUT</div>
     `;
     this.container.appendChild(this.paceNoteBoxEl);
-    this.paceNoteBoxEl.style.display = 'none';
     this.paceNoteIconEl = this.paceNoteBoxEl.querySelector('#pace-icon') as HTMLElement;
     this.paceNoteTextEl = this.paceNoteBoxEl.querySelector('#pace-text') as HTMLElement;
 
@@ -485,7 +482,7 @@ export class TelemetryHUD {
       <div><kbd>W</kbd> Throttle &nbsp; <kbd>S</kbd> Brake/Rev &nbsp; <kbd>A</kbd>/<kbd>D</kbd> Steer</div>
       <div><kbd>Space</kbd> Handbrake &nbsp; <kbd>C</kbd> Camera (Chase/Cockpit/Hood)</div>
       <div><kbd>K</kbd> Livery &nbsp; <kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>R</kbd> Reset Stage</div>
-      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad + Dual-Rumble Haptics Supported &bull; Vehicle Dynamics Proving Ground</div>
+      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad + Dual-Rumble Haptics Supported &bull; 20 Checkpoint Gates</div>
     `;
     this.container.appendChild(help);
 
@@ -600,11 +597,9 @@ export class TelemetryHUD {
 
   public onToggleAudio?: () => boolean;
 
-  public update(telemetry: VehicleTelemetry, stageManager?: StageManager | any): void {
+  public update(telemetry: VehicleTelemetry, stageManager?: StageManager): void {
     // 1. Stage Gameplay & Timer
     if (stageManager) {
-      const isProvingGround = stageManager.totalGates === 0;
-
       if (stageManager.state === 'COUNTDOWN') {
         this.countdownEl.style.display = 'block';
         const num = Math.ceil(stageManager.countdownTimerS);
@@ -622,26 +617,10 @@ export class TelemetryHUD {
         if (fTime) fTime.textContent = stageManager.formatTime(stageManager.stageTimeS);
       }
 
-      if (isProvingGround) {
-        if (this.stageTitleEl) this.stageTitleEl.textContent = 'APEX PROVING GROUND • VEHICLE DYNAMICS';
+      this.gateEl.textContent = `GATE ${Math.min(stageManager.totalGates, stageManager.currentGateIndex + 1)} OF ${stageManager.totalGates}`;
 
-        if (stageManager.zeroToSixtyTimeS !== null && stageManager.zeroToSixtyTimeS !== undefined) {
-          this.gateEl.textContent = `0-60: ${stageManager.zeroToSixtyTimeS.toFixed(2)}s`;
-        } else {
-          this.gateEl.textContent = 'DYNAMICS TEST';
-        }
-
-        if (stageManager.brakingDistance60to0M !== null && stageManager.brakingDistance60to0M !== undefined) {
-          this.bestTimeEl.textContent = `60-0 BRAKE: ${stageManager.brakingDistance60to0M.toFixed(1)}m`;
-        } else {
-          this.bestTimeEl.textContent = 'GRID: 2.5m x 2.5m TARMAC';
-        }
-      } else {
-        this.gateEl.textContent = `GATE ${Math.min(stageManager.totalGates, stageManager.currentGateIndex + 1)} OF ${stageManager.totalGates}`;
-
-        if (stageManager.bestTimeS) {
-          this.bestTimeEl.textContent = `BEST: ${stageManager.formatTime(stageManager.bestTimeS)}`;
-        }
+      if (stageManager.bestTimeS) {
+        this.bestTimeEl.textContent = `BEST: ${stageManager.formatTime(stageManager.bestTimeS)}`;
       }
 
       // Split Pill
@@ -653,7 +632,7 @@ export class TelemetryHUD {
       }
 
       // Pace Note
-      const pace = stageManager.getPaceNoteAhead?.();
+      const pace = stageManager.getPaceNoteAhead();
       this.updatePaceNote(pace);
 
       // Distance counter in miles (1m = 0.000621371 miles)
@@ -725,12 +704,7 @@ export class TelemetryHUD {
     this.drawSpeedometer(telemetry.speedMph, telemetry.rpm);
   }
 
-  private updatePaceNote(pace?: PaceNote): void {
-    if (!pace || !pace.code) {
-      this.paceNoteBoxEl.style.display = 'none';
-      return;
-    }
-    this.paceNoteBoxEl.style.display = 'flex';
+  private updatePaceNote(pace: PaceNote): void {
     this.paceNoteTextEl.textContent = pace.code;
 
     // SVG icon path based on turn curvature & direction

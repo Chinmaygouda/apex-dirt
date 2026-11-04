@@ -271,9 +271,13 @@ export class VehicleEffects {
       const sx = Math.abs(this.vehicle.wheelSlipRatios[i] || 0);
       const driftDeg = Math.abs(this.vehicle.driftAngleDeg);
 
-      // (a) Handbrake peak: small grey smoke puffs behind rear tyres
-      if (isRear && (inputs.handbrake || driftDeg > 20.0) && carSpeedMs > 4.0) {
-        if (Math.random() < 0.45) {
+      // (a) Handbrake, drift, wheel burnout, or heavy braking: tyre smoke
+      const isWheelSpinning = sx > 0.30 && carSpeedMs > 1.0;
+      const isHardDrift = driftDeg > 10.0 && carSpeedMs > 3.0;
+      const isHeavyBraking = inputs.brake > 0.5 && carSpeedMs > 6.0;
+
+      if ((isRear && (inputs.handbrake || isHardDrift || isWheelSpinning)) || isHeavyBraking) {
+        if (Math.random() < 0.55) {
           this.emitParticle(
             wPos.x + THREE.MathUtils.randFloatSpread(0.2),
             wPos.y - 0.25,
@@ -281,8 +285,8 @@ export class VehicleEffects {
             -linvel.x * 0.2 + THREE.MathUtils.randFloatSpread(0.6),
             THREE.MathUtils.randFloat(0.4, 0.9),
             -linvel.z * 0.2 + THREE.MathUtils.randFloatSpread(0.6),
-            0.35, 1.25, 0.65,
-            new THREE.Color(0.85, 0.85, 0.88)
+            0.35, 1.45, 0.75,
+            new THREE.Color(0.88, 0.88, 0.90) // Dense tyre smoke
           );
         }
       }
