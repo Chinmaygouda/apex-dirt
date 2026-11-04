@@ -477,10 +477,10 @@ export class TelemetryHUD {
     const help = document.createElement('div');
     help.className = 'hud-controls-help';
     help.innerHTML = `
-      <div><kbd>W</kbd> / <kbd>↑</kbd> Throttle &nbsp; <kbd>S</kbd> / <kbd>↓</kbd> Brake</div>
-      <div><kbd>A</kbd> / <kbd>D</kbd> Steer &nbsp; <kbd>Space</kbd> Handbrake</div>
-      <div><kbd>R</kbd> Restart Stage &nbsp; <kbd>T</kbd> Toggle Drivetrain</div>
-      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad Supported &bull; 20 Checkpoint Gates</div>
+      <div><kbd>W</kbd> Throttle &nbsp; <kbd>S</kbd> Brake/Rev &nbsp; <kbd>A</kbd>/<kbd>D</kbd> Steer</div>
+      <div><kbd>Space</kbd> Handbrake &nbsp; <kbd>C</kbd> Camera (Chase/Cockpit/Hood)</div>
+      <div><kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>R</kbd> Reset Stage</div>
+      <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad + Dual-Rumble Haptics Supported &bull; 20 Checkpoint Gates</div>
     `;
     this.container.appendChild(help);
 
