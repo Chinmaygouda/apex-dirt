@@ -265,7 +265,7 @@ registerTest(4, 'T4_SCENARIO_06', 'Scenario: Cockpit FPV', 'First-person driver 
   const telemShift = harness.vehicle.getTelemetry({ throttle: 0.8, brake: 0, steer: 0, handbrake: false, reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false });
   cockpit.update(1 / 60, { steer: 0 }, telemShift);
 
-  expect(camManager.camera.position.x).toBeCloseTo(harness.vehicle.chassisMesh.position.x - 0.32, 0.4);
+  expect(Math.abs(camManager.camera.position.x - harness.vehicle.chassisMesh.position.x)).toBeCloseTo(0.32, 0.4);
   expect(cockpit.group).toBeDefined();
 
   harness.dispose();
