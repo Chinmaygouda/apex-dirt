@@ -741,11 +741,11 @@ export class CockpitController {
     wandGrip.position.set(0, 0.07, 0);
     this.ebrakeWandMesh.add(wandGrip);
 
-    // Aluminum Drilled 3-Pedal Box (Driver Footwell x = +0.33)
+    // Aluminum Drilled 3-Pedal Box (Driver Footwell x = -0.33)
     const pedalConfigs = [
-      { name: 'clutch', x: 0.26, group: this.clutchPedalGroup },
-      { name: 'brake', x: 0.33, group: this.brakePedalGroup },
-      { name: 'throttle', x: 0.40, group: this.throttlePedalGroup },
+      { name: 'clutch', x: -0.40, group: this.clutchPedalGroup },
+      { name: 'brake', x: -0.33, group: this.brakePedalGroup },
+      { name: 'throttle', x: -0.26, group: this.throttlePedalGroup },
     ];
 
     for (const p of pedalConfigs) {
@@ -772,9 +772,9 @@ export class CockpitController {
       }
     }
 
-    // Red handheld fire extinguisher mounted in passenger footwell (x = -0.28)
+    // Red handheld fire extinguisher mounted in passenger footwell (x = 0.28)
     const extGroup = new THREE.Group();
-    extGroup.position.set(-0.28, 0.22, 0.28);
+    extGroup.position.set(0.28, 0.22, 0.28);
     extGroup.rotation.set(0, 0, Math.PI / 2);
     this.group.add(extGroup);
 
