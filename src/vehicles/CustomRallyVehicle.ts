@@ -1697,24 +1697,39 @@ export class CustomRallyVehicle {
       this.chassisMainGroup.add(doorStripe);
     }
 
-    // Aerodynamic rally side-view mirrors
-    for (const sx of [-0.75, 0.75]) {
-      const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.025), trimMat);
-      mirrorStem.position.set(sx, 0.54, 0.42);
+    // Aerodynamic rally side-view mirrors with solid A-pillar sail mounts
+    for (const sx of [-0.70, 0.70]) {
+      const isRight = sx > 0;
+      // Triangular sail base plate connecting mirror to A-pillar door corner
+      const sail = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.10, 0.12), trimMat);
+      sail.position.set(isRight ? 0.67 : -0.67, 0.52, 0.40);
+      sail.rotation.y = isRight ? -0.15 : 0.15;
+      this.chassisMainGroup.add(sail);
+      this.cockpitObscuringMeshes.push(sail);
+
+      // Support stem extending outward
+      const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.025, 0.03), trimMat);
+      mirrorStem.position.set(isRight ? 0.72 : -0.72, 0.52, 0.40);
       this.chassisMainGroup.add(mirrorStem);
+      this.cockpitObscuringMeshes.push(mirrorStem);
 
-      const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.14), bodyMat);
-      mirrorHousing.position.set(sx > 0 ? sx + 0.04 : sx - 0.04, 0.54, 0.42);
+      // Streamlined aerodynamic mirror housing
+      const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.09, 0.15), bodyMat);
+      mirrorHousing.position.set(isRight ? 0.78 : -0.78, 0.52, 0.40);
+      mirrorHousing.rotation.y = isRight ? -0.12 : 0.12;
       this.chassisMainGroup.add(mirrorHousing);
+      this.cockpitObscuringMeshes.push(mirrorHousing);
 
-      const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), new THREE.MeshStandardMaterial({
+      // Reflective mirror glass face
+      const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.13, 0.07), new THREE.MeshStandardMaterial({
         color: 0xe2e8f0,
         metalness: 0.95,
         roughness: 0.05,
       }));
-      mirrorGlass.position.set(sx > 0 ? sx + 0.072 : sx - 0.072, 0.54, 0.42);
-      mirrorGlass.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2;
+      mirrorGlass.position.set(isRight ? 0.822 : -0.822, 0.52, 0.40);
+      mirrorGlass.rotation.y = isRight ? Math.PI / 2 - 0.12 : -Math.PI / 2 + 0.12;
       this.chassisMainGroup.add(mirrorGlass);
+      this.cockpitObscuringMeshes.push(mirrorGlass);
     }
 
     // Polyurethane WRC mudflaps behind all four wheels
@@ -1729,6 +1744,7 @@ export class CustomRallyVehicle {
       const frontMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.02), mudflapMat);
       frontMudflap.position.set(sx, 0.04, 0.82);
       this.chassisMainGroup.add(frontMudflap);
+      this.cockpitObscuringMeshes.push(frontMudflap);
     }
     for (const sx of [-0.91, 0.91]) {
       const rearMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.02), mudflapMat);
@@ -1754,6 +1770,33 @@ export class CustomRallyVehicle {
       this.chassisMainGroup.add(apillar);
       this.cockpitObscuringMeshes.push(apillar);
     }
+
+    // Exterior Windshield Sun Visor Header Banner ("APEX RALLY")
+    const bannerCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+    let bannerTex = null;
+    if (bannerCanvas) {
+      bannerCanvas.width = 512;
+      bannerCanvas.height = 64;
+      const bctx = bannerCanvas.getContext('2d');
+      if (bctx) {
+        bctx.fillStyle = '#0f172a';
+        bctx.fillRect(0, 0, 512, 64);
+        bctx.fillStyle = '#f8fafc';
+        bctx.font = 'bold 32px sans-serif';
+        bctx.textAlign = 'center';
+        bctx.textBaseline = 'middle';
+        bctx.fillText('APEX RALLY', 256, 32);
+        bannerTex = new THREE.CanvasTexture(bannerCanvas);
+      }
+    }
+    const sunVisorMat = bannerTex 
+      ? new THREE.MeshBasicMaterial({ map: bannerTex })
+      : new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 });
+    const sunVisorBanner = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.10, 0.02), sunVisorMat);
+    sunVisorBanner.position.set(0, 0.81, 0.16);
+    sunVisorBanner.rotation.x = -0.68;
+    this.chassisMainGroup.add(sunVisorBanner);
+    this.cockpitObscuringMeshes.push(sunVisorBanner);
 
     // Coupe roof cap
     const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.06, 0.95), bodyMat);
@@ -1853,6 +1896,11 @@ export class CustomRallyVehicle {
       rearArch.castShadow = true;
       this.chassisMainGroup.add(rearArch);
 
+      // Protective matte black stone-guard film on front face of blister flare
+      const stoneGuard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 0.02), trimMat);
+      stoneGuard.position.set(rx, 0.18, -0.75);
+      this.chassisMainGroup.add(stoneGuard);
+
       // Rear arch brake duct / cooling vent cutout
       const vent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.10), trimMat);
       vent.position.set(rx * 1.02, 0.12, -0.80);
@@ -1914,18 +1962,19 @@ export class CustomRallyVehicle {
     towLoop.position.set(0.48, 0.04, 2.18);
     this.frontBumperGroup.add(towLoop);
 
-    // Quad front rally pod driving lamps
+    // Quad front rally pod driving lamps (centered cluster: x = -0.30, -0.10, +0.10, +0.30)
     for (let i = -1.5; i <= 1.5; i += 1.0) {
+      const px = i * 0.20; // 0.20 spacing creates a compact rally pod cluster
       const lampHousing = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.125, 0.125, 0.10, 16),
+        new THREE.CylinderGeometry(0.10, 0.10, 0.09, 16),
         trimMat
       );
       lampHousing.rotateX(Math.PI / 2);
-      lampHousing.position.set(i * 0.33, 0.24, 2.08);
+      lampHousing.position.set(px, 0.24, 2.09);
       this.frontBumperGroup.add(lampHousing);
 
       const lampLens = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.11, 0.11, 0.02, 16),
+        new THREE.CylinderGeometry(0.088, 0.088, 0.02, 16),
         new THREE.MeshStandardMaterial({
           color: 0xffffff,
           emissive: 0xffffff,
@@ -1934,8 +1983,25 @@ export class CustomRallyVehicle {
         })
       );
       lampLens.rotateX(Math.PI / 2);
-      lampLens.position.set(i * 0.33, 0.24, 2.135);
+      lampLens.position.set(px, 0.24, 2.14);
       this.frontBumperGroup.add(lampLens);
+    }
+
+    // Outer Headlamp Protective Bezels & Amber Turn Indicators (CAD Chapter 1)
+    for (const lx of [-0.55, 0.55]) {
+      const isRight = lx > 0;
+      // Matte black aerodynamic headlamp bezel frame
+      const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.15, 0.03), trimMat);
+      bezel.position.set(lx, 0.24, 2.138);
+      this.frontBumperGroup.add(bezel);
+
+      // Amber corner indicator lamp
+      const indicator = new THREE.Mesh(
+        new THREE.BoxGeometry(0.08, 0.12, 0.025),
+        amberLightMat
+      );
+      indicator.position.set(isRight ? 0.72 : -0.72, 0.24, 2.135);
+      this.frontBumperGroup.add(indicator);
     }
 
     // =========================================================================
@@ -1969,6 +2035,57 @@ export class CustomRallyVehicle {
     const rainLight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.03), rainLightMat);
     rainLight.position.set(0, -0.04, -2.15);
     this.chassisMainGroup.add(rainLight);
+
+    // =========================================================================
+    // UNDERBODY CHASSIS PROTECTION ARMOR (CAD SPEC CHAPTER 4)
+    // =========================================================================
+    // Component B: Mid-Body Smooth Carbon-Kevlar Undertray with Propshaft Tunnel (z = +0.80m to -0.90m)
+    const undertrayMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.85,
+      metalness: 0.20,
+      flatShading: true,
+    });
+    const undertray = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.025, 1.70), undertrayMat);
+    undertray.position.set(0, -0.02, -0.05);
+    this.chassisMainGroup.add(undertray);
+
+    // Recessed central propshaft tunnel trough
+    const tunnelTroughMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 });
+    const propshaftTunnel = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 1.68), tunnelTroughMat);
+    propshaftTunnel.position.set(0, -0.005, -0.05);
+    this.chassisMainGroup.add(propshaftTunnel);
+
+    // Component C: Tubular 4130 Chrome-Moly Rear Differential Cradle & Rock Deflector (z = -0.90m to -1.95m)
+    const cradleMat = new THREE.MeshStandardMaterial({
+      color: 0x52525b,
+      roughness: 0.40,
+      metalness: 0.75,
+      flatShading: true,
+    });
+    // Longitudinal cradle tubular rails
+    for (const cx of [-0.38, 0.38]) {
+      const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.05, 8), cradleMat);
+      rail.rotateX(Math.PI / 2);
+      rail.position.set(cx, -0.03, -1.42);
+      this.chassisMainGroup.add(rail);
+    }
+    // Transverse cradle cross-members
+    for (const cz of [-0.95, -1.40, -1.88]) {
+      const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.76, 8), cradleMat);
+      cross.rotateZ(Math.PI / 2);
+      cross.position.set(0, -0.03, cz);
+      this.chassisMainGroup.add(cross);
+    }
+    // Salisbury mechanical LSD differential pumpkin casing with cooling ribs
+    const diffMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5, metalness: 0.8 });
+    const diffPumpkin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.32), diffMat);
+    diffPumpkin.position.set(0, 0.06, -1.35);
+    this.chassisMainGroup.add(diffPumpkin);
+    // Aluminum lower rock deflector shield plate
+    const deflectorPlate = new THREE.Mesh(new THREE.BoxGeometry(0.80, 0.02, 0.85), bashPlateMat);
+    deflectorPlate.position.set(0, -0.04, -1.42);
+    this.chassisMainGroup.add(deflectorPlate);
 
     // Integrated ducktail lip spoiler on trunk deck
     const ducktailLip = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.06, 0.08), trimMat);
