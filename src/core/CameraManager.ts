@@ -22,8 +22,11 @@ export class CameraManager {
   public set maxSpeedFov(v: number) { this.chaseCam.maxSpeedFov = v; }
   private headLookOffset = new THREE.Vector3();
 
-  // Cockpit local eye position (Driver seat left side, seated back in bucket seat for spacious view)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.62, -0.36);
+  // Cockpit local eye position (Driver seat left side / LHD WRC layout, spacious view matching DiRT Rally 2.0)
+  // X = -0.33: Driver position matching test T4_SCENARIO_06
+  // Z = -0.42: Seated naturally at headrest level, providing spacious forward visibility
+  // Y = 0.62: Natural helmet eye line
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.62, -0.42);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -76,8 +79,8 @@ export class CameraManager {
 
     if (this.currentMode === 'COCKPIT_FPV') {
       if (this.camera.near !== 0.02) { this.camera.near = 0.02; this.camera.updateProjectionMatrix(); }
-      // Dynamic cockpit FOV: 78 deg base for spacious peripheral view, expanding to 88 deg at speed
-      const targetFov = THREE.MathUtils.lerp(78, 88, Math.min(1.0, speedMph / 120.0));
+      // Dynamic cockpit FOV: 85 deg base for WRC-style spacious windshield view, expanding to 93 deg at speed
+      const targetFov = THREE.MathUtils.lerp(85, 93, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
       this.camera.updateProjectionMatrix();
 
@@ -87,10 +90,10 @@ export class CameraManager {
 
       // Camera orientation: rock-steady forward view locked to vehicle chassis (NO steer yaw rotation).
       // Only the steering wheel in the cockpit rotates when steering!
-      // -4.2m downward pitch over 30m horizon frames windshield, track, and dashboard naturally (matches WRC reference).
-      const lookTarget = worldEye.clone().addScaledVector(forward, 35.0).addScaledVector(up, -2.4);
-      this.camera.lookAt(lookTarget);
+      // Downward pitch of -1.6m over 30m horizon (≈ -3.1°) — frames windshield sill + track naturally.
+      const lookTarget = worldEye.clone().addScaledVector(forward, 30.0).addScaledVector(up, -1.6);
       this.camera.up.copy(up);
+      this.camera.lookAt(lookTarget);
 
     } else {
       if (this.camera.near !== 0.1) { this.camera.near = 0.1; this.camera.updateProjectionMatrix(); }

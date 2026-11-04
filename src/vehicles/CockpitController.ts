@@ -61,6 +61,7 @@ export class CockpitController {
   // Driver body & arm IK
   private driverTorso!: THREE.Mesh;
   private driverHead!: THREE.Mesh;
+  private driverSeatMeshes: THREE.Object3D[] = [];
   private leftUpperArm!: THREE.Mesh;
   private leftForearm!: THREE.Mesh;
   private leftHandGroup = new THREE.Group();
@@ -70,15 +71,15 @@ export class CockpitController {
   private rightHandGroup = new THREE.Group();
 
   // Arm joint anchor offsets from driver torso
-  // Driver seated on left (LHD): x = -0.33, y = 0.22, z = -0.36
-  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.48, -0.28);
-  private readonly rightShoulder = new THREE.Vector3(-0.18, 0.48, -0.28);
+  // Driver seated on left (LHD): x = -0.33, y = 0.22, z = -0.42
+  private readonly leftShoulder = new THREE.Vector3(-0.48, 0.48, -0.36);
+  private readonly rightShoulder = new THREE.Vector3(-0.18, 0.48, -0.36);
   private readonly upperArmLen = 0.28;
   private readonly forearmLen = 0.28;
 
-  // Key interior anchor positions
-  private readonly driverPos = new THREE.Vector3(-0.33, 0.22, -0.36);
-  private readonly wheelCenter = new THREE.Vector3(-0.33, 0.44, 0.06);
+  // Key interior anchor positions (LHD WRC Layout matching DiRT Rally 2.0)
+  private readonly driverPos = new THREE.Vector3(-0.33, 0.22, -0.42);
+  private readonly wheelCenter = new THREE.Vector3(-0.33, 0.43, 0.08);
   private readonly wheelRadius = 0.155; // 310mm rally dished wheel
   private readonly columnAngle = -Math.PI / 10.0; // ~18 deg tilt back towards driver
 
@@ -113,6 +114,9 @@ export class CockpitController {
   public setCockpitViewMode(isCockpit: boolean): void {
     if (this.driverHead) this.driverHead.visible = !isCockpit;
     if (this.driverTorso) this.driverTorso.visible = !isCockpit;
+    for (const m of this.driverSeatMeshes) {
+      m.visible = !isCockpit;
+    }
     if (this.leftUpperArm) this.leftUpperArm.visible = true;
     if (this.rightUpperArm) this.rightUpperArm.visible = true;
     if (this.leftForearm) this.leftForearm.visible = true;
@@ -279,15 +283,15 @@ export class CockpitController {
       this.group.add(slot);
     }
 
-    // 10. Coiled Rally Intercom Headset Cable (hanging from roof roll bar to driver)
+    // 10. Coiled Rally Intercom Headset Cable (hung neatly along the driver left A-pillar roll tube)
     const cableMat = new THREE.MeshStandardMaterial({ color: 0x111113, roughness: 0.9 });
     for (let i = 0; i < 12; i++) {
       const t = i / 12;
       const angle = t * Math.PI * 6;
-      const coilR = 0.014;
-      const cy = THREE.MathUtils.lerp(0.86, 0.64, t);
-      const cx = -0.32 + Math.cos(angle) * coilR;
-      const cz = THREE.MathUtils.lerp(-0.08, -0.22, t) + Math.sin(angle) * coilR;
+      const coilR = 0.012;
+      const cy = THREE.MathUtils.lerp(0.78, 0.52, t);
+      const cx = -0.58 + Math.cos(angle) * coilR;
+      const cz = THREE.MathUtils.lerp(0.25, 0.35, t) + Math.sin(angle) * coilR;
       const ring = new THREE.Mesh(new THREE.TorusGeometry(coilR, 0.003, 6, 12), cableMat);
       ring.position.set(cx, cy, cz);
       ring.rotation.x = Math.PI / 2;
@@ -361,12 +365,12 @@ export class CockpitController {
     addTube(aTopLeft, aTopRight);
 
     // Diagonal Roof / Header Brace with Slender Protective Foam & Safety Wraps (WRC Style)
-    // Tucked high against the ceiling frame on the passenger side so windshield sightline is 100% open!
-    const diagStart = new THREE.Vector3(-0.10, 0.885, -0.42);
-    const diagEnd = new THREE.Vector3(0.54, 0.885, 0.18);
+    // Pressed flat against the ceiling on the passenger side — entirely out of the driver's forward sightline.
+    const diagStart = new THREE.Vector3(0.06, 0.898, -0.42);
+    const diagEnd = new THREE.Vector3(-0.54, 0.898, 0.18);
     const diagDir = diagEnd.clone().sub(diagStart);
     const diagLen = diagDir.length();
-    const diagMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, diagLen, 8), foamMat);
+    const diagMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, diagLen, 8), foamMat);
     diagMesh.position.copy(diagStart).lerp(diagEnd, 0.5);
     diagMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), diagDir.clone().normalize());
     this.group.add(diagMesh);
@@ -737,11 +741,11 @@ export class CockpitController {
     wandGrip.position.set(0, 0.07, 0);
     this.ebrakeWandMesh.add(wandGrip);
 
-    // Aluminum Drilled 3-Pedal Box (Driver Footwell x = -0.33)
+    // Aluminum Drilled 3-Pedal Box (Driver Footwell x = +0.33)
     const pedalConfigs = [
-      { name: 'clutch', x: -0.40, group: this.clutchPedalGroup },
-      { name: 'brake', x: -0.33, group: this.brakePedalGroup },
-      { name: 'throttle', x: -0.26, group: this.throttlePedalGroup },
+      { name: 'clutch', x: 0.26, group: this.clutchPedalGroup },
+      { name: 'brake', x: 0.33, group: this.brakePedalGroup },
+      { name: 'throttle', x: 0.40, group: this.throttlePedalGroup },
     ];
 
     for (const p of pedalConfigs) {
@@ -768,9 +772,9 @@ export class CockpitController {
       }
     }
 
-    // Red handheld fire extinguisher mounted in passenger footwell (x = 0.28)
+    // Red handheld fire extinguisher mounted in passenger footwell (x = -0.28)
     const extGroup = new THREE.Group();
-    extGroup.position.set(0.28, 0.22, 0.28);
+    extGroup.position.set(-0.28, 0.22, 0.28);
     extGroup.rotation.set(0, 0, Math.PI / 2);
     this.group.add(extGroup);
 
@@ -1161,22 +1165,27 @@ export class CockpitController {
 
     // Bucket Seats (Driver x = -0.33, Co-driver x = +0.33)
     for (const sx of [-0.33, 0.33]) {
+      const isDriver = (Math.abs(sx - this.driverPos.x) < 0.05);
+
       // Seat cushion (y = 0.22)
       const cushion = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.08, 0.44), seatMat);
       cushion.position.set(sx, 0.22, -0.32);
       this.group.add(cushion);
+      if (isDriver) this.driverSeatMeshes.push(cushion);
 
       // Seat backrest (from y = 0.24 up to 0.58)
       const backrest = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.50, 0.10), seatMat);
       backrest.position.set(sx, 0.48, -0.52);
       backrest.rotation.x = 0.18;
       this.group.add(backrest);
+      if (isDriver) this.driverSeatMeshes.push(backrest);
 
       // Side bolsters
       for (const bx of [-0.19, 0.19]) {
         const bolster = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.22), seatMat);
         bolster.position.set(sx + bx, 0.38, -0.42);
         this.group.add(bolster);
+        if (isDriver) this.driverSeatMeshes.push(bolster);
       }
 
       // 4-Point Harness Straps (shoulder straps)
@@ -1185,6 +1194,7 @@ export class CockpitController {
         strap.position.set(sx + hx, 0.48, -0.48);
         strap.rotation.x = 0.18;
         this.group.add(strap);
+        if (isDriver) this.driverSeatMeshes.push(strap);
       }
     }
 
@@ -1520,8 +1530,8 @@ export class CockpitController {
     }
 
     // 6. 2-Bone Arm IK Driver Hands
-    // Left hand grips 9 o'clock on steering wheel rim (outer door side, -X)
-    const leftGripLocal = new THREE.Vector3(-this.wheelRadius, 0, 0);
+    // Left hand grips 9 o'clock on steering wheel rim (outer door side, +X)
+    const leftGripLocal = new THREE.Vector3(this.wheelRadius, 0, 0);
     leftGripLocal.applyAxisAngle(new THREE.Vector3(0, 0, 1), wheelRotZ);
     leftGripLocal.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.columnAngle);
     const leftTargetHand = this.wheelCenter.clone().add(leftGripLocal);
@@ -1532,11 +1542,11 @@ export class CockpitController {
       this.leftUpperArm,
       this.leftForearm,
       this.leftHandGroup,
-      new THREE.Vector3(-0.8, -0.6, 0.2) // Elbow bends down and outward left (-X)
+      new THREE.Vector3(0.8, -0.6, 0.2) // Elbow bends down and outward left (+X)
     );
 
-    // Right hand grips 3 o'clock on steering wheel rim (center console side, +X)
-    const rightGripLocal = new THREE.Vector3(this.wheelRadius, 0, 0);
+    // Right hand grips 3 o'clock on steering wheel rim (center console side, -X)
+    const rightGripLocal = new THREE.Vector3(-this.wheelRadius, 0, 0);
     rightGripLocal.applyAxisAngle(new THREE.Vector3(0, 0, 1), wheelRotZ);
     rightGripLocal.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.columnAngle);
     const rightWheelTarget = this.wheelCenter.clone().add(rightGripLocal);
@@ -1558,7 +1568,7 @@ export class CockpitController {
       this.rightUpperArm,
       this.rightForearm,
       this.rightHandGroup,
-      new THREE.Vector3(0.6, -0.6, 0.2) // Elbow bends down and toward center console (+X)
+      new THREE.Vector3(-0.6, -0.6, 0.2) // Elbow bends down and toward center console (-X)
     );
   }
 }
