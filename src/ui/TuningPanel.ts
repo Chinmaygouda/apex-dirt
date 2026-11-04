@@ -13,7 +13,7 @@ export class TuningPanel {
     private onToggleDebugOverlays?: (show: boolean) => void
   ) {
     this.gui = new GUI({ title: 'Apex Dirt - Vehicle Physics Tuner' });
-    this.gui.open();
+    this.gui.close();
     this.setupControls();
   }
 

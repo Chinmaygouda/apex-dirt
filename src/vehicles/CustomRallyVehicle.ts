@@ -167,6 +167,7 @@ export class CustomRallyVehicle {
   // Dynamic Brake Rotor Heat Glow
   private brakeRotorMats: THREE.MeshStandardMaterial[] = [];
   private brakeHeat: number = 0;
+  private brakeRotorTemps: number[] = [20, 20, 20, 20];
 
   public cycleLivery(): RallyLiveryPreset {
     const list: RallyLiveryPreset[] = ['APEX_RED', 'MONTE_CARLO_BLUE', 'MIDNIGHT_STEALTH'];
@@ -1385,6 +1386,36 @@ export class CustomRallyVehicle {
       wheelMesh.quaternion.multiply(steerQuat).multiply(rollQuat);
     }
 
+    // Dynamic Brake Rotor Thermal Heating & Incandescent Glow
+    const linvel = this.chassisBody.linvel();
+    const speedMph = Math.hypot(linvel.x, linvel.y, linvel.z) * 2.23694;
+
+    for (let i = 0; i < 4; i++) {
+      const isWheelBraking = (inputs.brake > 0.05) || (i >= 2 && inputs.handbrake);
+      if (isWheelBraking && speedMph > 3.0) {
+        // Heating proportional to braking input and velocity
+        const heatGen = (inputs.brake * 0.8 + (i >= 2 && inputs.handbrake ? 0.9 : 0.0)) * (speedMph / 60.0) * 190.0 * frameDt;
+        this.brakeRotorTemps[i] = Math.min(850.0, this.brakeRotorTemps[i] + heatGen);
+      } else {
+        // Convective cooling: faster cooling at higher vehicle airflow
+        const coolingRate = 18.0 + speedMph * 0.65;
+        this.brakeRotorTemps[i] = Math.max(20.0, this.brakeRotorTemps[i] - coolingRate * frameDt);
+      }
+
+      // Modulate emissive glow: above 220°C begins dull orange, reaching incandescent cherry red at 650°C+
+      const mat = this.brakeRotorMats[i];
+      if (mat) {
+        const temp = this.brakeRotorTemps[i];
+        if (temp > 220.0) {
+          const frac = THREE.MathUtils.clamp((temp - 220.0) / 480.0, 0, 1.0);
+          mat.emissive.setRGB(frac * 1.0, frac * 0.16, 0.0);
+          mat.emissiveIntensity = frac * 2.2;
+        } else {
+          mat.emissiveIntensity = 0.0;
+        }
+      }
+    }
+
     // Brake lights: basic material switches color + PointLight + Bloom Sprites for visible glow in render
     const isBraking = inputs.brake > 0.05 || inputs.handbrake;
     if (this.brakeLightMat) {
@@ -1771,22 +1802,26 @@ export class CustomRallyVehicle {
     const rollHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
     rollHoop.position.set(0, 0.81, -0.32);
     this.chassisMainGroup.add(rollHoop);
+    this.cockpitObscuringMeshes.push(rollHoop);
 
     for (const rx of [-0.56, 0.56]) {
       const rollLeg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.04), rollCageMat);
       rollLeg.position.set(rx, 0.58, -0.32);
       this.chassisMainGroup.add(rollLeg);
+      this.cockpitObscuringMeshes.push(rollLeg);
 
       const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.85), rollCageMat);
       rearStay.position.set(rx, 0.63, -0.80);
       rearStay.rotation.x = 0.45;
       this.chassisMainGroup.add(rearStay);
+      this.cockpitObscuringMeshes.push(rearStay);
     }
 
     for (const seatX of [-0.32, 0.32]) {
       const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.12), trimMat);
       headrest.position.set(seatX, 0.56, -0.22);
       this.chassisMainGroup.add(headrest);
+      this.cockpitObscuringMeshes.push(headrest);
     }
 
     // =========================================================================
@@ -2141,6 +2176,8 @@ export class CustomRallyVehicle {
 
     for (let i = 0; i < 4; i++) {
       const wheelGroup = new THREE.Group();
+      const isRight = (i % 2 === 1);
+
       const tire = new THREE.Mesh(tireGeom, tireMat);
       tire.castShadow = true;
       wheelGroup.add(tire);
@@ -2148,15 +2185,54 @@ export class CustomRallyVehicle {
       const rim = new THREE.Mesh(rimGeom, rimMat);
       wheelGroup.add(rim);
 
+      // Deep-dish outer rim lip
+      const lipGeom = new THREE.TorusGeometry(this.wheelRadius * 0.62, 0.016, 8, 16);
+      lipGeom.rotateY(Math.PI / 2);
+      const lip = new THREE.Mesh(lipGeom, rimMat);
+      lip.position.x = isRight ? 0.075 : -0.075;
+      wheelGroup.add(lip);
+
+      // 10 radial tarmac rally spokes (5 crossed dual-ended bars)
+      const spokeGeom = new THREE.BoxGeometry(0.024, this.wheelRadius * 0.60, 0.022);
+      for (let s = 0; s < 5; s++) {
+        const angle = (s / 5) * Math.PI;
+        const spoke = new THREE.Mesh(spokeGeom, rimMat);
+        spoke.position.x = isRight ? 0.05 : -0.05;
+        spoke.rotation.x = angle;
+        wheelGroup.add(spoke);
+      }
+
       // Center lug nut hub cap
       const capMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.30, 8), capMat);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.30, 8), capMat);
       cap.rotateZ(Math.PI / 2);
       wheelGroup.add(cap);
 
+      // Yellow motorsport tyre valve stem
+      const valveMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 });
+      const valve = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.03, 8), valveMat);
+      valve.position.set(isRight ? 0.09 : -0.09, this.wheelRadius * 0.68, 0);
+      valve.rotateZ(Math.PI / 2);
+      wheelGroup.add(valve);
+
+      // Ventilated drilled performance brake rotor disc
+      const rotorMat = new THREE.MeshStandardMaterial({
+        color: 0x27272a,
+        roughness: 0.35,
+        metalness: 0.85,
+        emissive: new THREE.Color(0x000000),
+        emissiveIntensity: 0.0,
+      });
+      this.brakeRotorMats.push(rotorMat);
+
+      const rotorGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.52, this.wheelRadius * 0.52, 0.016, 16);
+      rotorGeom.rotateZ(Math.PI / 2);
+      const rotor = new THREE.Mesh(rotorGeom, rotorMat);
+      rotor.position.x = isRight ? 0.012 : -0.012;
+      wheelGroup.add(rotor);
+
       // Red brake caliper sitting behind wheel
       const caliper = new THREE.Mesh(caliperGeom, caliperMat);
-      const isRight = (i % 2 === 1);
       caliper.position.set(isRight ? -0.06 : 0.06, 0.12, 0.0);
       wheelGroup.add(caliper);
 

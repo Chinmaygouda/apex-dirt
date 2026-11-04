@@ -55,25 +55,45 @@ export class VehicleEffects {
     this.vehicle = vehicle;
     this.physics = physics;
 
-    // --- A. Exhaust Flame & Light Setup ---
-    const flameGeo = new THREE.ConeGeometry(0.09, 0.38, 8);
-    flameGeo.rotateX(-Math.PI / 2); // Point backward (-Z in local car space)
-    const flameMat = new THREE.MeshBasicMaterial({
-      color: 0xff7700,
+    // --- A. Twin Exhaust Flame & Light Setup ---
+    const flameGroup = new THREE.Group();
+    const outerFlameMat = new THREE.MeshBasicMaterial({
+      color: 0xff6600,
       transparent: true,
       opacity: 0,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    this.exhaustFlameMesh = new THREE.Mesh(flameGeo, flameMat);
+    const innerCoreMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8, // Electric blue high-temperature flame core
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+
+    // Twin nozzles for dual exhaust tailpipes (x = 0.46 and x = 0.60)
+    for (const ex of [0.46, 0.60]) {
+      const outerGeo = new THREE.ConeGeometry(0.065, 0.36, 8);
+      outerGeo.rotateX(-Math.PI / 2);
+      const outerMesh = new THREE.Mesh(outerGeo, outerFlameMat);
+      outerMesh.position.set(ex, -0.04, -2.22);
+      flameGroup.add(outerMesh);
+
+      const innerGeo = new THREE.ConeGeometry(0.035, 0.22, 8);
+      innerGeo.rotateX(-Math.PI / 2);
+      const innerMesh = new THREE.Mesh(innerGeo, innerCoreMat);
+      innerMesh.position.set(ex, -0.04, -2.20);
+      flameGroup.add(innerMesh);
+    }
+
+    this.exhaustFlameMesh = flameGroup as any;
     this.exhaustFlameMesh.visible = false;
-    this.exhaustLight = new THREE.PointLight(0xff6600, 0, 4.0);
+    this.exhaustLight = new THREE.PointLight(0xff6600, 0, 4.5);
     this.scene.add(this.exhaustLight);
 
     if (this.vehicle.chassisMesh) {
       this.vehicle.chassisMesh.add(this.exhaustFlameMesh);
-      // Position under rear right bumper at twin exhaust tailpipes
-      this.exhaustFlameMesh.position.set(0.53, -0.04, -2.12);
     }
 
     // --- B. Instanced Particle System for Dust & Smoke ---
@@ -233,7 +253,7 @@ export class VehicleEffects {
       this.exhaustTimer = THREE.MathUtils.randFloat(0.35, 0.50); // ~0.5s duration
       this.onExhaustPop?.();
       // Emit sudden smoke puff from exhaust tip
-      const worldExhaust = new THREE.Vector3(0.55, -0.14, -1.38).applyQuaternion(chassisQuat).add(chassisPos);
+      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.15).applyQuaternion(chassisQuat).add(chassisPos);
       this.emitParticle(
         worldExhaust.x, worldExhaust.y, worldExhaust.z,
         -linvel.x * 0.4 + THREE.MathUtils.randFloatSpread(0.8),
@@ -248,13 +268,17 @@ export class VehicleEffects {
     if (this.exhaustTimer > 0) {
       this.exhaustTimer -= dt;
       this.exhaustFlameMesh.visible = true;
-      const flicker = THREE.MathUtils.randFloat(0.7, 1.3);
-      this.exhaustFlameMesh.scale.set(flicker, flicker, flicker * THREE.MathUtils.randFloat(0.8, 1.4));
-      (this.exhaustFlameMesh.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.randFloat(0.75, 1.0);
+      const flicker = THREE.MathUtils.randFloat(0.75, 1.35);
+      this.exhaustFlameMesh.scale.set(flicker, flicker, flicker * THREE.MathUtils.randFloat(0.9, 1.5));
+      this.exhaustFlameMesh.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh && (child as THREE.Mesh).material) {
+          ((child as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.randFloat(0.7, 0.95);
+        }
+      });
 
-      const worldExhaust = new THREE.Vector3(0.55, -0.14, -1.38).applyQuaternion(chassisQuat).add(chassisPos);
+      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.15).applyQuaternion(chassisQuat).add(chassisPos);
       this.exhaustLight.position.copy(worldExhaust);
-      this.exhaustLight.intensity = THREE.MathUtils.randFloat(6.0, 12.0);
+      this.exhaustLight.intensity = THREE.MathUtils.randFloat(7.0, 14.0);
     } else {
       this.exhaustFlameMesh.visible = false;
       this.exhaustLight.intensity = 0;
@@ -307,6 +331,22 @@ export class VehicleEffects {
             -linvel.z * 0.35 + THREE.MathUtils.randFloatSpread(0.8),
             0.4, 1.4, 0.75,
             new THREE.Color(0.72, 0.62, 0.48) // Warm dirt tone
+          );
+        }
+      }
+
+      // (d) Gravel & pebble kickup from driven wheels under hard acceleration
+      if (isDirt && isRear && inputs.throttle > 0.55 && (sx > 0.20 || carSpeedMs > 4.0)) {
+        if (Math.random() < 0.45) {
+          this.emitParticle(
+            wPos.x + THREE.MathUtils.randFloatSpread(0.10),
+            wPos.y - 0.28,
+            wPos.z + THREE.MathUtils.randFloatSpread(0.10),
+            -linvel.x * 0.75 + THREE.MathUtils.randFloatSpread(1.1),
+            THREE.MathUtils.randFloat(0.8, 1.9),
+            -linvel.z * 0.75 + THREE.MathUtils.randFloatSpread(1.1),
+            0.10, 0.32, 0.30,
+            new THREE.Color(0.45, 0.38, 0.32)
           );
         }
       }

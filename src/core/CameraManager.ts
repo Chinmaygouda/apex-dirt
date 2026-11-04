@@ -23,7 +23,7 @@ export class CameraManager {
   private headLookOffset = new THREE.Vector3();
 
   // Cockpit local eye position (Driver seat left side, seated back in bucket seat for spacious view)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.62, -0.28);
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.63, -0.38);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -76,8 +76,8 @@ export class CameraManager {
 
     if (this.currentMode === 'COCKPIT_FPV') {
       if (this.camera.near !== 0.04) { this.camera.near = 0.04; this.camera.updateProjectionMatrix(); }
-      // Dynamic cockpit FOV: 74 deg base for spacious peripheral view, expanding to 84 deg at speed
-      const targetFov = THREE.MathUtils.lerp(74, 84, Math.min(1.0, speedMph / 120.0));
+      // Dynamic cockpit FOV: 78 deg base for spacious peripheral view, expanding to 86 deg at speed
+      const targetFov = THREE.MathUtils.lerp(78, 86, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
       this.camera.updateProjectionMatrix();
 
@@ -87,8 +87,8 @@ export class CameraManager {
 
       // Camera orientation: rock-steady forward view locked to vehicle chassis (NO steer yaw rotation).
       // Only the steering wheel in the cockpit rotates when steering!
-      // Subtle -0.90m downward pitch over 35m horizon frames windshield, track, and dashboard naturally.
-      const lookTarget = worldEye.clone().addScaledVector(forward, 35.0).addScaledVector(up, -0.90);
+      // -1.85m downward pitch over 30m horizon frames windshield, track, and dashboard naturally (like DiRT Rally 2.0).
+      const lookTarget = worldEye.clone().addScaledVector(forward, 30.0).addScaledVector(up, -1.85);
       this.camera.lookAt(lookTarget);
       this.camera.up.copy(up);
 
