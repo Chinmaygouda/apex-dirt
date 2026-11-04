@@ -668,24 +668,32 @@ export class CockpitController {
     this.group.add(consoleTunnel);
 
     // Carbon-fiber toggle switch panel
-    const switchPanel = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.012), carbonMat);
-    switchPanel.position.set(0, 0.30, 0.22);
+    const switchPanel = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.012), carbonMat);
+    switchPanel.position.set(0, 0.32, 0.22);
     switchPanel.rotation.x = -0.22;
     this.group.add(switchPanel);
+
+    // 2 Rotary Knobs (Boost & Brake Bias)
+    for (let r = 0; r < 2; r++) {
+      const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.008, 12), metalMat);
+      dial.position.set(-0.04 + r * 0.08, 0.36, 0.215);
+      dial.rotation.x = -0.22;
+      this.group.add(dial);
+    }
 
     // Aircraft red-guarded ignition toggle
     const redGuard = new THREE.Mesh(
       new THREE.BoxGeometry(0.018, 0.030, 0.016),
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 })
     );
-    redGuard.position.set(-0.045, 0.32, 0.22);
+    redGuard.position.set(-0.045, 0.30, 0.22);
     redGuard.rotation.x = -0.22;
     this.group.add(redGuard);
 
     // 4 Auxiliary metal switches with indicator LEDs
     for (let i = 0; i < 4; i++) {
       const sw = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.018, 8), metalMat);
-      sw.position.set(-0.015 + i * 0.022, 0.30, 0.225);
+      sw.position.set(-0.015 + i * 0.022, 0.29, 0.225);
       sw.rotation.x = 0.3;
       this.group.add(sw);
 
@@ -697,27 +705,35 @@ export class CockpitController {
           emissiveIntensity: 0.9,
         })
       );
-      led.position.set(-0.015 + i * 0.022, 0.315, 0.22);
+      led.position.set(-0.015 + i * 0.022, 0.305, 0.22);
       this.group.add(led);
     }
 
-    // Sequential Gear Shifter with mechanical gate & spherical red knob
-    const shifterBase = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.015, 0.11), metalMat);
+    // Sequential Gear Shifter with mechanical gate, leather boot & spherical red knob
+    const shifterBase = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.015, 0.12), metalMat);
     shifterBase.position.copy(this.shifterPos);
     this.group.add(shifterBase);
 
     this.shifterLeverGroup.position.copy(this.shifterPos);
     this.group.add(this.shifterLeverGroup);
 
+    // Pleated leather shifter boot
+    const gaiterBoot = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.014, 0.038, 0.045, 6),
+      new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.9 })
+    );
+    gaiterBoot.position.set(0, 0.022, 0);
+    this.shifterLeverGroup.add(gaiterBoot);
+
     const shiftShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.16, 8), metalMat);
-    shiftShaft.position.set(0, 0.08, 0);
+    shiftShaft.position.set(0, 0.09, 0);
     this.shifterLeverGroup.add(shiftShaft);
 
     const shiftKnob = new THREE.Mesh(
       new THREE.SphereGeometry(0.018, 12, 12),
       new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.1 })
     );
-    shiftKnob.position.set(0, 0.16, 0);
+    shiftKnob.position.set(0, 0.17, 0);
     this.shifterLeverGroup.add(shiftKnob);
 
     // Tall Vertical Hydraulic Handbrake Wand with knurled grip
@@ -1216,6 +1232,41 @@ export class CockpitController {
     visor.position.set(0, 0.01, 0.08);
     this.driverHead.add(visor);
 
+    // Driver Lower Limbs & Racing Boots in Footwell (Driver side x = -0.33)
+    const bootMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.7, metalness: 0.2 });
+    const bootAccentMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
+
+    for (const legX of [-0.40, -0.26]) {
+      const isLeft = legX < -0.33;
+      // Thigh
+      const thigh = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.042, 0.32, 8), suitMat);
+      thigh.position.set(legX, 0.26, -0.16);
+      thigh.rotation.x = Math.PI / 2.6;
+      this.group.add(thigh);
+
+      // Knee
+      const knee = new THREE.Mesh(new THREE.SphereGeometry(0.044, 8, 8), suitMat);
+      knee.position.set(legX, 0.30, 0.01);
+      this.group.add(knee);
+
+      // Shin
+      const shin = new THREE.Mesh(new THREE.CylinderGeometry(0.040, 0.034, 0.30, 8), suitMat);
+      shin.position.set(legX, 0.22, 0.16);
+      shin.rotation.x = Math.PI / 4.2;
+      this.group.add(shin);
+
+      // Racing Boot
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.07, 0.15), bootMat);
+      boot.position.set(legX, 0.19, isLeft ? 0.30 : 0.34);
+      boot.rotation.x = -0.15;
+      this.group.add(boot);
+
+      // Boot sole & laces
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.012, 0.155), bootAccentMat);
+      sole.position.set(0, -0.032, 0);
+      boot.add(sole);
+    }
+
     // 8. Driver Arms Setup - Puffy Quilted Rally Racing Jacket ("Very Jacky" Cordura/Nomex)
     const jacketMat = new THREE.MeshStandardMaterial({
       color: 0x1c1c20, // Heavy Cordura / Nomex fireproof racing suit
@@ -1530,8 +1581,8 @@ export class CockpitController {
     }
 
     // 6. 2-Bone Arm IK Driver Hands
-    // Left hand grips 9 o'clock on steering wheel rim (outer door side, +X)
-    const leftGripLocal = new THREE.Vector3(this.wheelRadius, 0, 0);
+    // Left hand grips 9 o'clock on steering wheel rim (outer door side, -X)
+    const leftGripLocal = new THREE.Vector3(-this.wheelRadius, 0, 0);
     leftGripLocal.applyAxisAngle(new THREE.Vector3(0, 0, 1), wheelRotZ);
     leftGripLocal.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.columnAngle);
     const leftTargetHand = this.wheelCenter.clone().add(leftGripLocal);
@@ -1542,11 +1593,11 @@ export class CockpitController {
       this.leftUpperArm,
       this.leftForearm,
       this.leftHandGroup,
-      new THREE.Vector3(0.8, -0.6, 0.2) // Elbow bends down and outward left (+X)
+      new THREE.Vector3(-0.6, -0.6, 0.2) // Elbow bends down and outward left (-X toward door)
     );
 
-    // Right hand grips 3 o'clock on steering wheel rim (center console side, -X)
-    const rightGripLocal = new THREE.Vector3(-this.wheelRadius, 0, 0);
+    // Right hand grips 3 o'clock on steering wheel rim (center console side, +X)
+    const rightGripLocal = new THREE.Vector3(this.wheelRadius, 0, 0);
     rightGripLocal.applyAxisAngle(new THREE.Vector3(0, 0, 1), wheelRotZ);
     rightGripLocal.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.columnAngle);
     const rightWheelTarget = this.wheelCenter.clone().add(rightGripLocal);
@@ -1568,7 +1619,7 @@ export class CockpitController {
       this.rightUpperArm,
       this.rightForearm,
       this.rightHandGroup,
-      new THREE.Vector3(-0.6, -0.6, 0.2) // Elbow bends down and toward center console (-X)
+      new THREE.Vector3(0.5, -0.6, 0.2) // Elbow bends down and toward center console (+X)
     );
   }
 }
