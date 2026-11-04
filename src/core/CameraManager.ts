@@ -23,7 +23,7 @@ export class CameraManager {
   private headLookOffset = new THREE.Vector3();
 
   // Cockpit local eye position (Driver seat left side, driver eye height looking through windscreen)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.70, -0.02);
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.66, -0.16);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -75,8 +75,9 @@ export class CameraManager {
     const speedMph = Math.hypot(linvel.x, linvel.y, linvel.z) * 2.23694;
 
     if (this.currentMode === 'COCKPIT_FPV') {
+      if (this.camera.near !== 0.05) { this.camera.near = 0.05; this.camera.updateProjectionMatrix(); }
       // Base FOV ~62 deg inside cockpit for wider peripheral vision
-      const targetFov = THREE.MathUtils.lerp(62, 74, Math.min(1.0, speedMph / 120.0));
+      const targetFov = THREE.MathUtils.lerp(60, 72, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
       this.camera.updateProjectionMatrix();
 
@@ -85,16 +86,19 @@ export class CameraManager {
       this.camera.position.copy(worldEye);
 
       // Look direction: forward + slight lookahead into turn, looking down at road line
-      const targetLookYaw = -steerInput * 0.35;
+      const targetLookYaw = -steerInput * 0.28;
       const lookOffset = right.clone().multiplyScalar(Math.sin(targetLookYaw))
         .add(forward.clone().multiplyScalar(Math.cos(targetLookYaw)))
         .multiplyScalar(25.0);
 
-      const lookTarget = worldEye.clone().add(lookOffset).addScaledVector(up, -0.08);
+      const lookTarget = worldEye.clone().add(lookOffset).addScaledVector(up, -2.2);
       this.camera.lookAt(lookTarget);
       this.camera.up.copy(up);
 
-    } else if (this.currentMode === 'HOOD') {
+    } else {
+      if (this.camera.near !== 0.1) { this.camera.near = 0.1; this.camera.updateProjectionMatrix(); }
+    }
+    if (this.currentMode === 'HOOD') {
       // Hood / Bumper camera: low and fast
       const targetFov = THREE.MathUtils.lerp(66, 80, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
