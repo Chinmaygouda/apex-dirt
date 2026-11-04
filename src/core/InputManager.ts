@@ -10,6 +10,7 @@ export interface VehicleInputs {
   cameraCycle?: boolean;
   headlightToggle?: boolean;
   dayNightToggle?: boolean;
+  liveryCycle?: boolean;
 }
 
 export class InputManager {
@@ -26,6 +27,7 @@ export class InputManager {
     cameraCycle: false,
     headlightToggle: false,
     dayNightToggle: false,
+    liveryCycle: false,
   };
 
   private prevResetPressed = false;
@@ -35,6 +37,7 @@ export class InputManager {
   private prevCamPressed = false;
   private prevHeadlightPressed = false;
   private prevDayNightPressed = false;
+  private prevLiveryPressed = false;
 
   constructor() {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -76,6 +79,7 @@ export class InputManager {
     const kbCamCycle = !!(this.keys['KeyC'] || this.keys['c']);
     const kbHeadlight = !!(this.keys['KeyL'] || this.keys['l'] || this.keys['KeyH'] || this.keys['h']);
     const kbDayNight = !!(this.keys['KeyN'] || this.keys['n']);
+    const kbLivery = !!(this.keys['KeyK'] || this.keys['k']);
 
     // 2. Gamepad API
     let gpThrottle = 0;
@@ -147,6 +151,9 @@ export class InputManager {
     const dayNightTrigger = rawDayNight && !this.prevDayNightPressed;
     this.prevDayNightPressed = rawDayNight;
 
+    const liveryTrigger = kbLivery && !this.prevLiveryPressed;
+    this.prevLiveryPressed = kbLivery;
+
     this.inputs.throttle = rawThrottle;
     this.inputs.brake = rawBrake;
     this.inputs.steer = rawSteer;
@@ -158,6 +165,8 @@ export class InputManager {
     this.inputs.cameraCycle = camTrigger;
     this.inputs.headlightToggle = headlightTrigger;
     this.inputs.dayNightToggle = dayNightTrigger;
+    this.inputs.liveryCycle = liveryTrigger;
+    this.inputs.liveryCycle = liveryTrigger;
 
     return this.inputs;
   }

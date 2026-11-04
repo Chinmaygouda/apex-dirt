@@ -20,6 +20,16 @@ export class TuningPanel {
   private setupControls(): void {
     const tuning = this.vehicle.tuning;
 
+    // Vehicle Cosmetics & Rally Livery
+    const liveryFolder = this.gui.addFolder('🎨 Vehicle Livery & Styling');
+    liveryFolder.add(this.vehicle, 'currentLivery', ['APEX_RED', 'MONTE_CARLO_BLUE', 'MIDNIGHT_STEALTH'])
+      .name('Rally Livery [K]')
+      .listen()
+      .onChange((v: any) => {
+        this.vehicle.setLivery(v);
+      });
+    liveryFolder.open();
+
     // 0. Debug Overlays Toggle (Hotkey [O])
     this.gui.add(tuning, 'showDebugOverlays')
       .name('📊 Show Debug Overlays [O]')

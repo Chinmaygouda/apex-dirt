@@ -16,6 +16,10 @@ export class CockpitController {
   private tachoNeedle!: THREE.Mesh;
   private speedoNeedle!: THREE.Mesh;
   private shifterLever!: THREE.Mesh;
+  private ebrakeLever!: THREE.Mesh;
+  private gearTex?: THREE.CanvasTexture;
+  private gearCtx?: CanvasRenderingContext2D;
+  private shiftLedMat!: THREE.MeshStandardMaterial;
 
   // Driver body parts
   private driverTorso!: THREE.Mesh;
@@ -364,6 +368,24 @@ export class CockpitController {
   /**
    * Update cockpit, steering wheel, gauges, and driver arms every frame
    */
+  private drawGearDisplay(gear: number | string): void {
+    if (!this.gearCtx || !this.gearTex) return;
+    const ctx = this.gearCtx;
+    ctx.fillStyle = '#09090b';
+    ctx.fillRect(0, 0, 64, 64);
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, 60, 60);
+
+    ctx.fillStyle = '#22c55e';
+    ctx.font = 'bold 38px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const txt = gear === -1 ? 'R' : gear === 0 ? 'N' : String(gear);
+    ctx.fillText(txt, 32, 34);
+    this.gearTex.needsUpdate = true;
+  }
+
   public update(dt: number, telemetry: VehicleTelemetry, steerInput: number): void {
     // 1. Rotate Steering Wheel (up to +-180 deg / +-PI)
     const targetWheelRot = -steerInput * Math.PI;

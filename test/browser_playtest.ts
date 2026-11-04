@@ -313,6 +313,32 @@ async function runBrowserPlaytest() {
     fs.writeFileSync('browser_hood_view.png', Buffer.from(shotHood.data, 'base64'));
     console.log('  [SCREENSHOT] Saved browser_hood_view.png');
 
+    // 7b. Verify Livery Cycling (Key 'K')
+    await client.dispatchKeyEvent('keyDown', 'c', 'KeyC');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'c', 'KeyC');
+    await sleep(150); // back to CHASE
+
+    // Cycle to Monte Carlo Blue
+    await client.dispatchKeyEvent('keyDown', 'k', 'KeyK');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'k', 'KeyK');
+    await sleep(200);
+
+    const shotBlue = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_livery_blue.png', Buffer.from(shotBlue.data, 'base64'));
+    console.log('  [PASS] Cycled to Monte Carlo Blue livery via Key "K", saved browser_livery_blue.png');
+
+    // Cycle to Midnight Stealth
+    await client.dispatchKeyEvent('keyDown', 'k', 'KeyK');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'k', 'KeyK');
+    await sleep(200);
+
+    const shotStealth = await client.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('browser_livery_stealth.png', Buffer.from(shotStealth.data, 'base64'));
+    console.log('  [PASS] Cycled to Midnight Stealth livery via Key "K", saved browser_livery_stealth.png');
+
     // 8. Verify Headlight Toggle (Key 'L')
     const initialHeadlights = await client.evaluate(`window.headlightController.isOn`);
     if (initialHeadlights !== false) {

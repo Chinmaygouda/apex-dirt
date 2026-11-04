@@ -109,6 +109,40 @@ export interface CustomVehicleTuning {
   showDebugOverlays: boolean;
 }
 
+export type RallyLiveryPreset = 'APEX_RED' | 'MONTE_CARLO_BLUE' | 'MIDNIGHT_STEALTH';
+
+export interface LiveryColors {
+  name: string;
+  bodyColor: number;
+  stripeColor: number;
+  rimColor: number;
+  mudflapColor: number;
+}
+
+export const RALLY_LIVERIES: Record<RallyLiveryPreset, LiveryColors> = {
+  APEX_RED: {
+    name: 'Apex Classic Red',
+    bodyColor: 0xba1a1a,
+    stripeColor: 0xf8fafc,
+    rimColor: 0xf8fafc,
+    mudflapColor: 0xdc2626,
+  },
+  MONTE_CARLO_BLUE: {
+    name: 'Monte Carlo Blue',
+    bodyColor: 0x1d4ed8,
+    stripeColor: 0xfacc15,
+    rimColor: 0xfacc15,
+    mudflapColor: 0x1e293b,
+  },
+  MIDNIGHT_STEALTH: {
+    name: 'Midnight Stealth',
+    bodyColor: 0x18181b,
+    stripeColor: 0xd97706,
+    rimColor: 0xb45309,
+    mudflapColor: 0x09090b,
+  },
+};
+
 export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
@@ -122,6 +156,44 @@ export class CustomRallyVehicle {
   public hoodGroup!: THREE.Group;
   public rearWingGroup!: THREE.Group;
   public cockpitObscuringMeshes: THREE.Object3D[] = [];
+
+  // Livery & Cosmetics System
+  public currentLivery: RallyLiveryPreset = 'APEX_RED';
+  private bodyMaterials: THREE.MeshStandardMaterial[] = [];
+  private stripeMaterials: THREE.MeshStandardMaterial[] = [];
+  private rimMaterials: THREE.MeshStandardMaterial[] = [];
+  private mudflapMaterials: THREE.MeshStandardMaterial[] = [];
+
+  // Dynamic Brake Rotor Heat Glow
+  private brakeRotorMats: THREE.MeshStandardMaterial[] = [];
+  private brakeHeat: number = 0;
+
+  public cycleLivery(): RallyLiveryPreset {
+    const list: RallyLiveryPreset[] = ['APEX_RED', 'MONTE_CARLO_BLUE', 'MIDNIGHT_STEALTH'];
+    const idx = list.indexOf(this.currentLivery);
+    const next = list[(idx + 1) % list.length];
+    this.setLivery(next);
+    return next;
+  }
+
+  public setLivery(preset: RallyLiveryPreset): void {
+    this.currentLivery = preset;
+    const colors = RALLY_LIVERIES[preset];
+    if (!colors) return;
+
+    for (const m of this.bodyMaterials) {
+      m.color.setHex(colors.bodyColor);
+    }
+    for (const m of this.stripeMaterials) {
+      m.color.setHex(colors.stripeColor);
+    }
+    for (const m of this.rimMaterials) {
+      m.color.setHex(colors.rimColor);
+    }
+    for (const m of this.mudflapMaterials) {
+      m.color.setHex(colors.mudflapColor);
+    }
+  }
 
   public setCockpitViewMode(isCockpit: boolean): void {
     for (const m of this.cockpitObscuringMeshes) {
@@ -1432,6 +1504,7 @@ export class CustomRallyVehicle {
       metalness: 0.1,
       flatShading: true,
     });
+    this.bodyMaterials.push(bodyMat);
 
     const trimMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carTrimBlack,
@@ -1565,11 +1638,13 @@ export class CustomRallyVehicle {
 
     // Rally competition livery stripes (Alpine white)
     const liveryMat = new THREE.MeshStandardMaterial({
+
       color: 0xf8fafc,
       roughness: 0.3,
       metalness: 0.2,
       flatShading: true,
     });
+    this.stripeMaterials.push(liveryMat);
 
     const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 1.28), liveryMat);
     hoodStripe.position.set(0, 0.422, 1.28);
@@ -1615,6 +1690,7 @@ export class CustomRallyVehicle {
       metalness: 0.1,
       flatShading: true,
     });
+    this.mudflapMaterials.push(mudflapMat);
     for (const sx of [-0.89, 0.89]) {
       const frontMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.02), mudflapMat);
       frontMudflap.position.set(sx, 0.04, 0.82);
@@ -2004,6 +2080,7 @@ export class CustomRallyVehicle {
       metalness: 0.35,
       flatShading: true,
     });
+    this.rimMaterials.push(rimMat);
 
     const caliperMat = new THREE.MeshStandardMaterial({
       color: 0xdc2626, // Brembo red brake calipers

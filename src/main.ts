@@ -3,7 +3,7 @@ import { PhysicsWorld } from './physics/PhysicsWorld';
 import { CollisionImpulseDispatcher } from './physics/CollisionImpulseDispatcher';
 import { InputManager } from './core/InputManager';
 import { SandboxEnvironment } from './world/SandboxEnvironment';
-import { CustomRallyVehicle } from './vehicles/CustomRallyVehicle';
+import { CustomRallyVehicle, RALLY_LIVERIES } from './vehicles/CustomRallyVehicle';
 import { ChaseCamera } from './core/ChaseCamera';
 import { CameraManager } from './core/CameraManager';
 import { CockpitController } from './vehicles/CockpitController';
@@ -127,6 +127,10 @@ async function initGame() {
   const inputManager = new InputManager();
   const hud = new TelemetryHUD();
   hud.onToggleAudio = () => audioEngine.toggleMute();
+  hud.onToggleLivery = () => {
+    const liv = vehicle.cycleLivery();
+    return RALLY_LIVERIES[liv].name;
+  };
 
   let demoMode: 'skidpad' | 'handbrake' | 'testA' | null = null;
   let demoTimer = 0;
@@ -300,6 +304,10 @@ async function initGame() {
     if (inputs.headlightToggle) {
       const on = headlightController.toggle();
       hud.setHeadlights?.(on);
+    }
+    if (inputs.liveryCycle) {
+      const liv = vehicle.cycleLivery();
+      hud.setLivery?.(RALLY_LIVERIES[liv].name);
     }
     if (inputs.dayNightToggle) {
       const preset = dayNightCycle.togglePreset();

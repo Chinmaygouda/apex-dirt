@@ -27,6 +27,8 @@ export class TelemetryHUD {
   private cameraBadge?: HTMLElement;
   private lightsBadge?: HTMLElement;
   private todBadge?: HTMLElement;
+  private liveryBadge?: HTMLElement;
+  public onToggleLivery?: () => string;
 
   private steerBarFill!: HTMLElement;
   private throttleBarFill!: HTMLElement;
@@ -479,7 +481,7 @@ export class TelemetryHUD {
     help.innerHTML = `
       <div><kbd>W</kbd> Throttle &nbsp; <kbd>S</kbd> Brake/Rev &nbsp; <kbd>A</kbd>/<kbd>D</kbd> Steer</div>
       <div><kbd>Space</kbd> Handbrake &nbsp; <kbd>C</kbd> Camera (Chase/Cockpit/Hood)</div>
-      <div><kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>R</kbd> Reset Stage</div>
+      <div><kbd>K</kbd> Livery &nbsp; <kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>R</kbd> Reset Stage</div>
       <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad + Dual-Rumble Haptics Supported &bull; 20 Checkpoint Gates</div>
     `;
     this.container.appendChild(help);
@@ -548,6 +550,7 @@ export class TelemetryHUD {
         </div>
       </div>
       <div class="hud-badges-row">
+        <div class="hud-badge" id="livery-badge" style="cursor: pointer; pointer-events: auto; color: #f8fafc;">🎨 APEX RED [K]</div>
         <div class="hud-badge" id="camera-badge" style="cursor: pointer; pointer-events: auto;">🎥 CHASE [C]</div>
         <div class="hud-badge" id="lights-badge" style="cursor: pointer; pointer-events: auto;">💡 OFF [L]</div>
         <div class="hud-badge" id="tod-badge" style="cursor: pointer; pointer-events: auto;">☀️ NOON [N]</div>
@@ -570,6 +573,16 @@ export class TelemetryHUD {
     this.cameraBadge = bottomRight.querySelector('#camera-badge') as HTMLElement;
     this.lightsBadge = bottomRight.querySelector('#lights-badge') as HTMLElement;
     this.todBadge = bottomRight.querySelector('#tod-badge') as HTMLElement;
+    this.liveryBadge = bottomRight.querySelector('#livery-badge') as HTMLElement;
+    if (this.liveryBadge) {
+      this.liveryBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.onToggleLivery) {
+          const nextName = this.onToggleLivery();
+          this.setLivery(nextName);
+        }
+      });
+    }
 
     const audioBadge = bottomRight.querySelector('#audio-badge') as HTMLElement;
     audioBadge.addEventListener('click', (e) => {
@@ -778,6 +791,12 @@ export class TelemetryHUD {
     ctx.beginPath();
     ctx.arc(cx, cy, radius + 8, redlineAngle - 0.05, redlineAngle + 0.05);
     ctx.stroke();
+  }
+
+  public setLivery(name: string): void {
+    if (this.liveryBadge) {
+      this.liveryBadge.textContent = `🎨 ${name.toUpperCase()} [K]`;
+    }
   }
 
   public setCameraMode(mode: string): void {
