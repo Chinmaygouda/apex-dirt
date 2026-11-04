@@ -1635,6 +1635,7 @@ export class CustomRallyVehicle {
     lowerBody.position.set(0, 0.19, 0.02);
     lowerBody.castShadow = true;
     this.chassisMainGroup.add(lowerBody);
+    this.cockpitObscuringMeshes.push(lowerBody);
 
     // Sculpted rocker sills (bottom aerodynamic skirts)
     for (const sx of [-0.85, 0.85]) {
