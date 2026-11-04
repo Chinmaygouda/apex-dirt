@@ -4,6 +4,7 @@ import { THREE_PALETTE, PALETTE } from '../core/Constants';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { VehicleInputs } from '../core/InputManager';
 import { VehicleTelemetry } from './RapierBaselineVehicle';
+import { SuspensionState, SUSPENSION_STATIC_LENGTH } from './SuspensionState';
 
 export interface CustomVehicleTuning {
   // Suspension
@@ -12,6 +13,20 @@ export interface CustomVehicleTuning {
   damperRebound: number;
   suspensionRestLength: number;
   antiRollBarStiffness: number;
+  // Lane 2 additions. All optional: when omitted the rear axle mirrors the front and the stops are inactive,
+  // which reproduces the previous behaviour exactly.
+  springStiffnessRear?: number;        // N/m
+  damperCompressionRear?: number;      // Ns/m
+  damperReboundRear?: number;          // Ns/m
+  suspensionRestLengthRear?: number;   // m, spring-free length of the rear corners
+  antiRollBarStiffnessRear?: number;   // N/m
+  bumpStopLength?: number;             // m, wheel length below which the progressive bump stop adds spring force
+  bumpStopRate?: number;               // N/m, initial stop rate (progressive: the rate doubles bumpStopProgressM into the stop)
+  bumpStopProgressM?: number;          // m, distance into the stop at which the stop rate has doubled (default 0.03; larger = flatter)
+  droopStopLength?: number;            // m, longest wheel length the suspension can reach; ground beyond it = wheel hangs
+  damperBlowOffVelocity?: number;      // m/s, piston speed above which the damper turns digressive (both directions)
+  damperBlowOffRatio?: number;         // 0..1, damping slope above the blow-off speed as a fraction of the low-speed slope
+  centerOfMassHeight?: number;         // m, world height of the centre of gravity at the static ride (default: geometric centre of the collider, 0.819 m)
 
   // Aerodynamics (Reduced downforce CLA as requested)
   aeroDragCdA: number;
@@ -98,7 +113,21 @@ export class CustomRallyVehicle {
   public chassisMesh: THREE.Group;
   public wheelMeshes: THREE.Group[] = [];
   public chassisBody!: RAPIER.RigidBody;
+  public chassisCollider?: RAPIER.Collider;
   public drivingDirectionMode: 'forward' | 'reverse' = 'forward';
+
+  // Sub-mesh groups for damage & detachment
+  public chassisMainGroup!: THREE.Group;
+  public frontBumperGroup!: THREE.Group;
+  public hoodGroup!: THREE.Group;
+  public rearWingGroup!: THREE.Group;
+  public cockpitObscuringMeshes: THREE.Object3D[] = [];
+
+  public setCockpitViewMode(isCockpit: boolean): void {
+    for (const m of this.cockpitObscuringMeshes) {
+      m.visible = !isCockpit;
+    }
+  }
 
   // Visual materials
   private brakeLightMat!: THREE.MeshBasicMaterial;
@@ -110,11 +139,24 @@ export class CustomRallyVehicle {
 
   // Vehicle Parameters
   public tuning: CustomVehicleTuning = {
-    springStiffness: 42000,       // N/m
-    damperCompression: 3400,      // Ns/m
-    damperRebound: 4200,          // Ns/m
+    // ---- Suspension (Lane 2). Front axle, anti-roll and CoG are the stock 89aa93a values on purpose: front spring, roll
+    // stiffness and CoG height each break test:keyboard or the replay windows when moved (measured, see the Lane 2 report).
+    // NOTE ON THE TIME BASE: Rapier steps at its default dt = 1/60 s but this class applies forces with dt = 1/120 s, so static
+    // wheel load is 2.00x the car's weight and the REALISED ride frequency / damping ratio are about sqrt(2) x the paper values.
+    // Rear rates: spring 54,600 N/m (1.3 x front) cuts squat; rest length = 0.2593 + 5907 N / k keeps the 0.2593 m static ride.
+    springStiffness: 42000,       // N/m front
+    springStiffnessRear: 54600,   // N/m rear
+    damperCompression: 2774,      // Ns/m front (design zeta 0.39; was 3400)
+    damperRebound: 3426,          // Ns/m front (1.235 x compression; was 4200)
+    damperCompressionRear: 3163,  // Ns/m rear
+    damperReboundRear: 3906,      // Ns/m rear
     suspensionRestLength: 0.40,   // m (ensures continuous tyre road contact under heavy braking)
+    suspensionRestLengthRear: 0.3675, // m (static compression 0.1082 m at 5907 N)
     antiRollBarStiffness: 16000,  // N/m (keeps body level and prevents rollover during hard cornering)
+    antiRollBarStiffnessRear: 8000, // N/m (half the front bar: front share of roll stiffness ~56%, still inside the 45-62% band)
+    bumpStopLength: 0.15,         // m wheel length below which the progressive bump stop acts (10.9 cm of travel from static)
+    bumpStopRate: 35000,          // N/m initial stop rate
+    bumpStopProgressM: 0.08,      // m into the stop at which the rate has doubled (flat enough for a ramp landing under 6x static load)
 
     aeroDragCdA: 0.72,            // Typical 80s rally coupe Cd*A
     downforceCLA: 0.20,           // Substantially reduced CLA (from 1.37 to 0.20)
@@ -172,7 +214,7 @@ export class CustomRallyVehicle {
     driftExitAngleDeg: 5.0,
 
     enableSlideScrub: true,
-    slideScrubMuMax: 0.50,
+    slideScrubMuMax: 0.38,
     slideScrubMinSlipDeg: 9.0,
     slideScrubMaxSlipDeg: 35.0,
 
@@ -181,7 +223,7 @@ export class CustomRallyVehicle {
     bodyMotionExaggeration: 1.2,
     visualDiveScale: 0.40,
     visualSquatScale: 1.2,
-    visualRollScale: 4.8,
+    visualRollScale: 3.8,
     visualDroopExtension: 0.15,
 
     showDebugOverlays: false,
@@ -197,15 +239,16 @@ export class CustomRallyVehicle {
   // Wheel states (0: FL, 1: FR, 2: RL, 3: RR)
   private wheelAnchors: THREE.Vector3[] = [];
   private wheelAngularVel = [0, 0, 0, 0];
+  private suspTravelVelocity = [0, 0, 0, 0]; // m/s, + = compressing (Lane 2 SuspensionState)
   private prevSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
   private currentSuspensionLengths = [0.2593, 0.2593, 0.2593, 0.2593];
-  private wheelInContact = [true, true, true, true];
+  public wheelInContact = [true, true, true, true];
   private prevWheelInContact = [true, true, true, true];
   private wheelNormalForces = [0, 0, 0, 0];
   private wheelLateralForces = [0, 0, 0, 0];
   private wheelLongitudinalForces = [0, 0, 0, 0];
   private wheelSlipAngles = [0, 0, 0, 0];
-  private wheelSlipRatios = [0, 0, 0, 0];
+  public wheelSlipRatios = [0, 0, 0, 0];
   private wheelRotations = [0, 0, 0, 0];
 
   // Steering & Drift State
@@ -226,6 +269,9 @@ export class CustomRallyVehicle {
   private currentVisualRoll: number = 0;
   private droopTransient: number = 0;
   public lastVisualDroop: number[] = [0, 0, 0, 0];
+
+  // Visual sub-mesh groups for damage & detachment
+  public carGroup!: THREE.Group;
 
   // Powertrain & Gearing State (V1)
   public isShifting: boolean = false;
@@ -281,13 +327,22 @@ export class CustomRallyVehicle {
     }
   }
 
-  constructor(private scene: THREE.Scene, private physics: PhysicsWorld) {
+  constructor(private scene: THREE.Scene, private physics: PhysicsWorld, dispatcher?: any) {
     this.chassisMesh = new THREE.Group();
     this.setupWheelAnchors();
     this.createChassisVisuals();
     this.createWheelVisuals();
     this.initPhysics();
+    if (dispatcher) {
+      this.registerCollisionDispatcher(dispatcher);
+    }
     this.scene.add(this.chassisMesh);
+  }
+
+  public registerCollisionDispatcher(dispatcher: any): void {
+    if (dispatcher && typeof dispatcher.registerCarCollider === 'function') {
+      dispatcher.registerCarCollider(this.chassisCollider, this.chassisBody);
+    }
   }
 
   private setupWheelAnchors(): void {
@@ -320,9 +375,41 @@ export class CustomRallyVehicle {
       .setDensity(270)
       .setFriction(0.05)
       .setRestitution(0.05)
-      .setTranslation(0, 0.16, 0);
+      .setTranslation(0, 0.16, 0)
+      .setCollisionGroups((0x0002 << 16) | 0xffff);
+    colDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
 
-    this.physics.world.createCollider(colDesc, this.chassisBody);
+    this.chassisCollider = this.physics.world.createCollider(colDesc, this.chassisBody);
+    this.chassisCollider.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
+    if (this.tuning.centerOfMassHeight !== undefined) this.setCenterOfMassHeight(this.tuning.centerOfMassHeight);
+  }
+
+  /**
+   * Lane 2: move the centre of gravity WITHOUT moving the collision geometry (ground clearance and ramp/landing contact
+   * stay as they were). Mass and principal inertia are held at the values the 0.85 x 0.32 x 2.05 m box at density 270 has
+   * about its own centre, so yaw/pitch/roll response times are unchanged and only the weight-transfer lever arm changes.
+   * `heightM` is the world height of the CoG at the static ride (body origin at 0.6593 m).
+   */
+  public setCenterOfMassHeight(heightM: number): void {
+    if (!this.chassisCollider) return;
+    const W = 1.7, H = 0.64, D = 4.1, DENSITY = 270; // full box dimensions of the chassis collider
+    const m = DENSITY * W * H * D;
+    const localY = heightM - 0.6593 - 0.16;          // relative to the collider centre (collider sits 0.16 m above the body origin)
+    this.chassisCollider.setMassProperties(
+      m,
+      { x: 0, y: localY, z: 0 },
+      { x: (m / 12) * (H * H + D * D), y: (m / 12) * (W * W + D * D), z: (m / 12) * (W * W + H * H) },
+      { x: 0, y: 0, z: 0, w: 1 },
+    );
+  }
+
+  /** Per-axle spring and damper rates actually used by the substep (rear falls back to front when no rear value is set). */
+  public getAxleSuspensionRates(): { front: { k: number; cc: number; cr: number }; rear: { k: number; cc: number; cr: number } } {
+    const t = this.tuning;
+    return {
+      front: { k: t.springStiffness, cc: t.damperCompression, cr: t.damperRebound },
+      rear: { k: t.springStiffnessRear ?? t.springStiffness, cc: t.damperCompressionRear ?? t.damperCompression, cr: t.damperReboundRear ?? t.damperRebound },
+    };
   }
 
   /**
@@ -445,8 +532,8 @@ export class CustomRallyVehicle {
     const hbAuthority = inputs.handbrake ? 1.0 : 0.0;
     const dynamicAuthority = Math.max(brakeAuthority, slideAuthority, hbAuthority);
 
-    // Dynamic lock interpolates smoothly from cruise lock to rally lock (~12 deg at 95 mph, ~8.5 deg at 120 mph)
-    const baseRallyLock = maxSteerRad * Math.min(1.0, 36.0 / Math.max(16.0, speedMph)) * (1.0 - THREE.MathUtils.smoothstep(speedMph, 85.0, 125.0) * 0.50);
+    // Dynamic lock interpolates smoothly from cruise lock to rally lock
+    const baseRallyLock = maxSteerRad * Math.min(1.0, 36.0 / Math.max(16.0, speedMph));
     const effectiveLockRad = THREE.MathUtils.lerp(cruiseLockRad, baseRallyLock, dynamicAuthority);
 
     let targetSteer = -inputs.steer * effectiveLockRad;
@@ -556,7 +643,10 @@ export class CustomRallyVehicle {
     const isHandbrake = inputs.handbrake;
 
     // Suspension Raycasts & Spring Forces
-    const rayLength = this.tuning.suspensionRestLength + this.wheelRadius + 0.15;
+    // Per-corner geometry. Rear values mirror the front when the optional rear tuning fields are omitted.
+    const tn = this.tuning;
+    const restOf = (i: number) => (i >= 2 && tn.suspensionRestLengthRear !== undefined ? tn.suspensionRestLengthRear : tn.suspensionRestLength);
+    const maxLenOf = (i: number) => (tn.droopStopLength !== undefined ? tn.droopStopLength : restOf(i) + 0.15);
     const rayDir = upVec.clone().negate();
 
     const compressions = [0, 0, 0, 0];
@@ -567,19 +657,22 @@ export class CustomRallyVehicle {
       const localAnchor = this.wheelAnchors[i];
       const worldAnchor = localAnchor.clone().applyQuaternion(chassisQuat).add(worldChassisPos);
 
+      const rayLength = maxLenOf(i) + this.wheelRadius;
+
       // Cast ray with Rapier
       const ray = new rapier.Ray(
         { x: worldAnchor.x, y: worldAnchor.y, z: worldAnchor.z },
         { x: rayDir.x, y: rayDir.y, z: rayDir.z }
       );
 
-      // Hit filter excluding chassis itself
+      // Hit filter excluding chassis itself and querying only GROUP_GROUND (0x0001)
+      const filterGroups = (0x0020 << 16) | 0x0001;
       const hit = this.physics.world.castRayAndGetNormal(
         ray,
         rayLength,
         true,
         undefined,
-        undefined,
+        filterGroups,
         undefined,
         this.chassisBody
       );
@@ -588,7 +681,7 @@ export class CustomRallyVehicle {
         this.wheelInContact[i] = true;
         const currentLength = hit.timeOfImpact - this.wheelRadius;
         this.currentSuspensionLengths[i] = currentLength;
-        compressions[i] = Math.max(0, this.tuning.suspensionRestLength - currentLength);
+        compressions[i] = Math.max(0, restOf(i) - currentLength);
 
         const hp = worldAnchor.clone().add(rayDir.clone().multiplyScalar(hit.timeOfImpact));
         hitPoints[i] = hp;
@@ -596,7 +689,8 @@ export class CustomRallyVehicle {
       } else {
         this.wheelInContact[i] = false;
         this.prevWheelInContact[i] = false;
-        this.currentSuspensionLengths[i] = this.tuning.suspensionRestLength;
+        // Airborne: the wheel hangs at the droop stop if one is defined, otherwise at the spring-free length (as before).
+        this.currentSuspensionLengths[i] = tn.droopStopLength !== undefined ? tn.droopStopLength : restOf(i);
         compressions[i] = 0;
         hitPoints[i] = null;
       }
@@ -618,7 +712,7 @@ export class CustomRallyVehicle {
 
     // Anti-Roll Bar Load Transfer
     const arbFront = (compressions[0] - compressions[1]) * this.tuning.antiRollBarStiffness;
-    const arbRear = (compressions[2] - compressions[3]) * this.tuning.antiRollBarStiffness;
+    const arbRear = (compressions[2] - compressions[3]) * (this.tuning.antiRollBarStiffnessRear ?? this.tuning.antiRollBarStiffness);
 
     // 3. Compute Tyre Forces for Each Wheel
     for (let i = 0; i < 4; i++) {
@@ -634,6 +728,7 @@ export class CustomRallyVehicle {
         this.lastGroundSpeedsMph[i] = 0;
         this.lastWheelSpeedsMph[i] = this.wheelAngularVel[i] * this.wheelRadius * 2.23694;
         this.prevSuspensionLengths[i] = this.currentSuspensionLengths[i];
+        this.suspTravelVelocity[i] = 0;
         continue;
       }
 
@@ -645,9 +740,28 @@ export class CustomRallyVehicle {
       }
       this.prevSuspensionLengths[i] = this.currentSuspensionLengths[i];
       this.prevWheelInContact[i] = true;
+      this.suspTravelVelocity[i] = suspVelocity;
 
-      const damperCoeff = suspVelocity >= 0 ? this.tuning.damperCompression : this.tuning.damperRebound;
-      let Fz = deltaX * this.tuning.springStiffness + suspVelocity * damperCoeff;
+      const isRearCorner = i >= 2;
+      const springK = isRearCorner ? (tn.springStiffnessRear ?? tn.springStiffness) : tn.springStiffness;
+      const dampComp = isRearCorner ? (tn.damperCompressionRear ?? tn.damperCompression) : tn.damperCompression;
+      const dampReb = isRearCorner ? (tn.damperReboundRear ?? tn.damperRebound) : tn.damperRebound;
+      const damperCoeff = suspVelocity >= 0 ? dampComp : dampReb;
+      // Digressive damper (inactive unless damperBlowOffVelocity is set): above the blow-off speed the damping slope drops to
+      // damperBlowOffRatio of its low-speed value, which keeps body control at low piston speed and stops the damper from
+      // delivering a huge force spike on a landing.
+      let dampVel = suspVelocity;
+      if (tn.damperBlowOffVelocity !== undefined) {
+        const av = Math.abs(dampVel);
+        if (av > tn.damperBlowOffVelocity) dampVel = Math.sign(dampVel) * (tn.damperBlowOffVelocity + (av - tn.damperBlowOffVelocity) * (tn.damperBlowOffRatio ?? 1));
+      }
+      let Fz = deltaX * springK + dampVel * damperCoeff;
+
+      // Progressive bump stop (inactive unless bumpStopLength and bumpStopRate are set)
+      if (tn.bumpStopLength !== undefined && tn.bumpStopRate) {
+        const xb = tn.bumpStopLength - this.currentSuspensionLengths[i];
+        if (xb > 0) Fz += tn.bumpStopRate * xb * (1 + xb / (tn.bumpStopProgressM ?? 0.03));
+      }
 
       // Apply Anti-Roll Bar offset
       if (i === 0) Fz += arbFront;
@@ -707,13 +821,15 @@ export class CustomRallyVehicle {
         } else {
           const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
           const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
-          FmaxLat *= (1.0 + 0.55 * speedUndersteer * (1.0 - slideBlend));
+          const brakeFade = 1.0 - THREE.MathUtils.smoothstep(inputs.brake, 0.15, 0.75);
+          FmaxLat *= (1.0 + 0.55 * speedUndersteer * (1.0 - slideBlend) * brakeFade);
         }
       } else {
         // Front lateral grip in steady cornering: slightly moderated to ensure positive understeer gradient (front saturates before rear)
         const speedUndersteer = THREE.MathUtils.smoothstep(speedMph, 35.0, 55.0);
         const slideBlend = THREE.MathUtils.smoothstep(Math.abs(this.driftAngleDeg), 12.0, 22.0);
-        FmaxLat *= (1.0 - 0.10 * speedUndersteer * (1.0 - slideBlend));
+        const brakeFade = 1.0 - THREE.MathUtils.smoothstep(inputs.brake, 0.15, 0.75);
+        FmaxLat *= (1.0 - 0.10 * speedUndersteer * (1.0 - slideBlend) * brakeFade);
       }
 
       // Angular velocity update for wheel
@@ -1119,6 +1235,7 @@ export class CustomRallyVehicle {
     } else {
       targetPitchDeg = this.smoothedLongitudinalG * this.tuning.visualDiveScale * exag;
     }
+    this.currentVisualPitch += (targetPitchDeg - this.currentVisualPitch) * Math.min(1.0, 18.0 * frameDt);
 
     // Visual roll: derived purely from smoothed lateral G (no steering-key gating).
     // Turning right (smoothedLateralG > 0) rolls the car outward/left (-Z rotation).
@@ -1141,8 +1258,28 @@ export class CustomRallyVehicle {
     this.chassisMesh.position.copy(chassisPos);
     this.chassisMesh.quaternion.copy(chassisQuat).multiply(bodyOffsetQuat);
 
-    // Static normal load per rear wheel (~1,180 kg * 9.80665 / 4 = ~2,893 N)
-    const staticRearFz = 2893;
+    // Normal forces and axle load totals for symmetric load-driven droop
+    const fzFL = this.wheelNormalForces[0] || 0;
+    const fzFR = this.wheelNormalForces[1] || 0;
+    const fzRL = this.wheelNormalForces[2] || 0;
+    const fzRR = this.wheelNormalForces[3] || 0;
+    const frontTotalFz = fzFL + fzFR;
+    const rearTotalFz = fzRL + fzRR;
+    const totalFz = Math.max(1000, frontTotalFz + rearTotalFz);
+
+    // Pitch unloading (rear axle loses load to front axle under braking/turn-in):
+    const pitchUnload = Math.max(0, (frontTotalFz - rearTotalFz) / totalFz);
+    const hbUnload = inputs.handbrake ? 0.65 : 0.0;
+    const rearAvgFz = (fzRL + fzRR) * 0.5;
+    const wheelUnload = THREE.MathUtils.clamp((2893 - rearAvgFz) / 2893, 0, 1.0);
+
+    // Symmetric rear wheel droop driven purely by load reduction (no state gating)
+    const targetDroopRatio = THREE.MathUtils.clamp(
+      wheelUnload * 0.25 + pitchUnload * 0.35 + hbUnload,
+      0,
+      1.0
+    );
+    const targetRearDroop = targetDroopRatio * this.tuning.visualDroopExtension * exag;
 
     // Sync 4 wheels
     for (let i = 0; i < 4; i++) {
@@ -1152,15 +1289,11 @@ export class CustomRallyVehicle {
       const localAnchor = this.wheelAnchors[i];
       const suspLen = this.currentSuspensionLengths[i];
 
-      // Symmetric rear wheel droop driven purely by per-wheel load reduction (no state gating)
       let visualDroop = 0;
       const isRearWheel = i >= 2;
       if (isRearWheel) {
-        const fzSelf = this.wheelNormalForces[i] || 0;
-        const unloadRatio = THREE.MathUtils.clamp((staticRearFz - fzSelf) / staticRearFz, 0, 1.0);
-        const targetDroop = unloadRatio * this.tuning.visualDroopExtension;
         const currentDroop = this.lastVisualDroop[i] || 0;
-        visualDroop = currentDroop + (targetDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
+        visualDroop = currentDroop + (targetRearDroop - currentDroop) * Math.min(1.0, 15.0 * frameDt);
       }
       this.lastVisualDroop[i] = visualDroop;
       const effectiveSuspLen = suspLen + visualDroop;
@@ -1198,6 +1331,48 @@ export class CustomRallyVehicle {
       this.brakeLightSpriteL.material.opacity = isBraking ? 0.95 : 0.0;
       this.brakeLightSpriteR.material.opacity = isBraking ? 0.95 : 0.0;
     }
+  }
+
+  /**
+   * Lane 2 contract: physical suspension and chassis state for Lane 3 (body motion, camera). See SuspensionState.ts for
+   * units and sign conventions. Reads physics state only; never reads or writes visual offsets.
+   */
+  public getSuspensionState(): SuspensionState {
+    const tn = this.tuning;
+    const wheels = [0, 1, 2, 3].map((i) => {
+      const rest = i >= 2 && tn.suspensionRestLengthRear !== undefined ? tn.suspensionRestLengthRear : tn.suspensionRestLength;
+      const len = this.currentSuspensionLengths[i];
+      return {
+        travel: rest - len,
+        travelVelocity: this.suspTravelVelocity[i],
+        normalForce: this.wheelNormalForces[i],
+        grounded: this.wheelInContact[i],
+        droopFromStatic: len - SUSPENSION_STATIC_LENGTH,
+      };
+    }) as SuspensionState['wheels'];
+
+    let pitchDeg = 0;
+    let rollDeg = 0;
+    if (this.chassisBody) {
+      const r = this.chassisBody.rotation();
+      const q = new THREE.Quaternion(r.x, r.y, r.z, r.w);
+      const fwd = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
+      const rgt = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+      pitchDeg = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(fwd.y, -1, 1)));
+      rollDeg = THREE.MathUtils.radToDeg(Math.asin(THREE.MathUtils.clamp(rgt.y, -1, 1)));
+    }
+
+    return {
+      wheels,
+      chassis: {
+        heave: (wheels[0].droopFromStatic + wheels[1].droopFromStatic + wheels[2].droopFromStatic + wheels[3].droopFromStatic) / 4,
+        pitchDeg,
+        rollDeg,
+        lateralG: this.smoothedLateralG,
+        longitudinalG: this.smoothedLongitudinalG,
+      },
+      staticLength: SUSPENSION_STATIC_LENGTH,
+    };
   }
 
   public getVisualPitchDeg(): number {
@@ -1248,6 +1423,7 @@ export class CustomRallyVehicle {
 
   private createChassisVisuals(): void {
     const carGroup = new THREE.Group();
+    this.carGroup = carGroup;
 
     // Materials using verified sampled palette
     const bodyMat = new THREE.MeshStandardMaterial({
@@ -1311,103 +1487,448 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
-    // 1. Main Lower Body
-    const lowerBodyGeom = new THREE.BoxGeometry(1.7, 0.45, 4.1);
-    const lowerBody = new THREE.Mesh(lowerBodyGeom, bodyMat);
-    lowerBody.position.y = 0.2;
+    const bashPlateMat = new THREE.MeshStandardMaterial({
+      color: 0x9ca3af,
+      roughness: 0.35,
+      metalness: 0.8,
+      flatShading: true,
+    });
+
+    const exhaustMat = new THREE.MeshStandardMaterial({
+      color: 0xd1d5db,
+      roughness: 0.2,
+      metalness: 0.9,
+      flatShading: true,
+    });
+
+    const exhaustBoreMat = new THREE.MeshBasicMaterial({
+      color: 0x111111,
+    });
+
+    const rollCageMat = new THREE.MeshStandardMaterial({
+      color: 0xd4d4d8,
+      roughness: 0.4,
+      metalness: 0.5,
+      flatShading: true,
+    });
+
+    // Partitioned sub-mesh groups for damage and detachment
+    this.chassisMainGroup = new THREE.Group();
+    this.frontBumperGroup = new THREE.Group();
+    this.hoodGroup = new THREE.Group();
+    this.rearWingGroup = new THREE.Group();
+
+    carGroup.add(this.chassisMainGroup);
+    carGroup.add(this.frontBumperGroup);
+    carGroup.add(this.hoodGroup);
+    carGroup.add(this.rearWingGroup);
+
+    // =========================================================================
+    // 1. MAIN LOWER BODY & SCULPTED CHASSIS
+    // =========================================================================
+    // Central cabin/engine tub
+    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.38, 3.85), bodyMat);
+    lowerBody.position.set(0, 0.19, 0.02);
     lowerBody.castShadow = true;
-    carGroup.add(lowerBody);
+    this.chassisMainGroup.add(lowerBody);
 
-    // 2. Cabin / Greenhouse
-    const cabinGeom = new THREE.BoxGeometry(1.4, 0.48, 2.0);
-    const cabin = new THREE.Mesh(cabinGeom, glassMat);
-    cabin.position.set(0, 0.64, -0.2);
-    cabin.castShadow = true;
-    carGroup.add(cabin);
-
-    // Roof cap
-    const roofGeom = new THREE.BoxGeometry(1.36, 0.08, 1.7);
-    const roof = new THREE.Mesh(roofGeom, bodyMat);
-    roof.position.set(0, 0.9, -0.2);
-    roof.castShadow = true;
-    carGroup.add(roof);
-
-    // 3. Flared Wheel Arches
-    const flareGeom = new THREE.BoxGeometry(0.12, 0.38, 0.9);
-    for (const [x, z] of [[-0.88, 1.2], [0.88, 1.2], [-0.88, -1.2], [0.88, -1.2]]) {
-      const flare = new THREE.Mesh(flareGeom, bodyMat);
-      flare.position.set(x, 0.18, z);
-      carGroup.add(flare);
+    // Sculpted rocker sills (bottom aerodynamic skirts)
+    for (const sx of [-0.85, 0.85]) {
+      const sill = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 2.05), trimMat);
+      sill.position.set(sx, 0.04, 0.0);
+      this.chassisMainGroup.add(sill);
     }
 
-    // 4. Rear Spoiler on Twin Pylons
-    const wingPylonGeom = new THREE.BoxGeometry(0.06, 0.32, 0.15);
-    const pylonL = new THREE.Mesh(wingPylonGeom, trimMat);
-    pylonL.position.set(-0.6, 0.56, -1.85);
-    carGroup.add(pylonL);
+    // Hood / bonnet wedge sloping forward to front fascia
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.10, 1.30), bodyMat);
+    hood.position.set(0, 0.37, 1.28);
+    hood.rotation.x = 0.04;
+    hood.castShadow = true;
+    this.hoodGroup.add(hood);
 
-    const pylonR = new THREE.Mesh(wingPylonGeom, trimMat);
-    pylonR.position.set(0.6, 0.56, -1.85);
-    carGroup.add(pylonR);
+    // Twin hood heat extractor louvers
+    for (const hx of [-0.36, 0.36]) {
+      const louver = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
+      louver.position.set(hx, 0.42, 1.25);
+      this.hoodGroup.add(louver);
+    }
 
-    const wingBladeGeom = new THREE.BoxGeometry(1.75, 0.06, 0.45);
-    const wingBlade = new THREE.Mesh(wingBladeGeom, trimMat);
-    wingBlade.position.set(0, 0.72, -1.9);
+    // Central turbo intercooler hood scoop
+    const scoopMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.7, flatShading: true });
+    const hoodScoop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.44), scoopMat);
+    hoodScoop.position.set(0, 0.43, 1.30);
+    this.hoodGroup.add(hoodScoop);
+
+    const scoopIntake = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.04, 0.05), exhaustBoreMat);
+    scoopIntake.position.set(0, 0.43, 1.52);
+    this.hoodGroup.add(scoopIntake);
+
+    // Rally competition livery stripes (Alpine white)
+    const liveryMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      roughness: 0.3,
+      metalness: 0.2,
+      flatShading: true,
+    });
+
+    const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 1.28), liveryMat);
+    hoodStripe.position.set(0, 0.422, 1.28);
+    hoodStripe.rotation.x = 0.04;
+    this.hoodGroup.add(hoodStripe);
+
+    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 0.94), liveryMat);
+    roofStripe.position.set(0, 0.892, -0.25);
+    this.chassisMainGroup.add(roofStripe);
+    this.cockpitObscuringMeshes.push(roofStripe);
+
+    // Door competition lower rocker accent decals
+    for (const sx of [-0.852, 0.852]) {
+      const doorStripe = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.07, 1.95), liveryMat);
+      doorStripe.position.set(sx, 0.16, 0.0);
+      this.chassisMainGroup.add(doorStripe);
+    }
+
+    // Aerodynamic rally side-view mirrors
+    for (const sx of [-0.75, 0.75]) {
+      const mirrorStem = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.025), trimMat);
+      mirrorStem.position.set(sx, 0.54, 0.42);
+      this.chassisMainGroup.add(mirrorStem);
+
+      const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.14), bodyMat);
+      mirrorHousing.position.set(sx > 0 ? sx + 0.04 : sx - 0.04, 0.54, 0.42);
+      this.chassisMainGroup.add(mirrorHousing);
+
+      const mirrorGlass = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.06), new THREE.MeshStandardMaterial({
+        color: 0xe2e8f0,
+        metalness: 0.95,
+        roughness: 0.05,
+      }));
+      mirrorGlass.position.set(sx > 0 ? sx + 0.072 : sx - 0.072, 0.54, 0.42);
+      mirrorGlass.rotation.y = sx > 0 ? Math.PI / 2 : -Math.PI / 2;
+      this.chassisMainGroup.add(mirrorGlass);
+    }
+
+    // Polyurethane WRC mudflaps behind all four wheels
+    const mudflapMat = new THREE.MeshStandardMaterial({
+      color: 0xb91c1c, // Rally red mudflaps
+      roughness: 0.6,
+      metalness: 0.1,
+      flatShading: true,
+    });
+    for (const sx of [-0.89, 0.89]) {
+      const frontMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.02), mudflapMat);
+      frontMudflap.position.set(sx, 0.04, 0.82);
+      this.chassisMainGroup.add(frontMudflap);
+    }
+    for (const sx of [-0.91, 0.91]) {
+      const rearMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.02), mudflapMat);
+      rearMudflap.position.set(sx, 0.04, -1.98);
+      this.chassisMainGroup.add(rearMudflap);
+    }
+
+    // =========================================================================
+    // 2. COUPE GREENHOUSE & SLOPED FASTBACK REAR WINDOW
+    // =========================================================================
+    // Raked front windshield
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.72), glassMat);
+    windshield.position.set(0, 0.62, 0.38);
+    windshield.rotation.x = -0.68; // ~39 deg rake
+    windshield.castShadow = true;
+    this.chassisMainGroup.add(windshield);
+
+    // Structural A-pillars
+    for (const ax of [-0.68, 0.68]) {
+      const apillar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.74), bodyMat);
+      apillar.position.set(ax, 0.62, 0.38);
+      apillar.rotation.x = -0.68;
+      this.chassisMainGroup.add(apillar);
+    }
+
+    // Coupe roof cap
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.06, 0.95), bodyMat);
+    roof.position.set(0, 0.86, -0.25);
+    roof.castShadow = true;
+    this.chassisMainGroup.add(roof);
+
+    // Roof rally air scoop / periscope
+    const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.34), trimMat);
+    roofScoop.position.set(0, 0.915, -0.05);
+    this.chassisMainGroup.add(roofScoop);
+
+    this.cockpitObscuringMeshes.push(roof, roofScoop, windshield);
+
+    // SLOPED REAR FASTBACK WINDOW (Coupe Silhouette Key Element)
+    // Long aerodynamic fastback glass sweeping down from roof to trunk deck
+    const fastbackWindow = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.04, 0.98), glassMat);
+    fastbackWindow.position.set(0, 0.67, -1.14);
+    fastbackWindow.rotation.x = 0.44; // ~25 deg fastback rake
+    fastbackWindow.castShadow = true;
+    this.chassisMainGroup.add(fastbackWindow);
+
+    // Sculpted C-pillar fastback flanks (left and right quarter panels)
+    for (const cx of [-0.68, 0.68]) {
+      const cpillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.92), bodyMat);
+      cpillar.position.set(cx, 0.65, -1.12);
+      cpillar.rotation.x = 0.44;
+      cpillar.castShadow = true;
+      this.chassisMainGroup.add(cpillar);
+    }
+
+    // Triangular coupe side windows
+    for (const sx of [-0.68, 0.68]) {
+      const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 0.68), glassMat);
+      sideGlass.position.set(sx, 0.63, -0.25);
+      this.chassisMainGroup.add(sideGlass);
+
+      const quarterGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.38), glassMat);
+      quarterGlass.position.set(sx, 0.58, -0.72);
+      this.chassisMainGroup.add(quarterGlass);
+    }
+
+    // Rear trunk deck lid extending from base of sloped rear window to rear valence
+    const trunkLid = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.10, 0.48), bodyMat);
+    trunkLid.position.set(0, 0.45, -1.78);
+    trunkLid.castShadow = true;
+    this.chassisMainGroup.add(trunkLid);
+
+    // Visible interior: tubular roll cage structure and bucket seat headrests
+    const rollHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
+    rollHoop.position.set(0, 0.81, -0.32);
+    this.chassisMainGroup.add(rollHoop);
+
+    for (const rx of [-0.56, 0.56]) {
+      const rollLeg = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.52, 0.04), rollCageMat);
+      rollLeg.position.set(rx, 0.58, -0.32);
+      this.chassisMainGroup.add(rollLeg);
+
+      const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.85), rollCageMat);
+      rearStay.position.set(rx, 0.63, -0.80);
+      rearStay.rotation.x = 0.45;
+      this.chassisMainGroup.add(rearStay);
+    }
+
+    for (const seatX of [-0.32, 0.32]) {
+      const headrest = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.24, 0.12), trimMat);
+      headrest.position.set(seatX, 0.56, -0.22);
+      this.chassisMainGroup.add(headrest);
+    }
+
+    // =========================================================================
+    // 3. FLARED WIDE-BODY WHEEL ARCHES (BOX FENDERS)
+    // =========================================================================
+    // Front flared blister arches (centered around front axle z = 1.35)
+    for (const fx of [-0.88, 0.88]) {
+      const frontArch = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.36, 0.98), bodyMat);
+      frontArch.position.set(fx, 0.19, 1.35);
+      frontArch.castShadow = true;
+      this.chassisMainGroup.add(frontArch);
+
+      // Inner wheel well liner
+      const liner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.88), trimMat);
+      liner.position.set(fx * 0.94, 0.16, 1.35);
+      this.chassisMainGroup.add(liner);
+    }
+
+    // Rear muscular widebody box flares (centered around rear axle z = -1.35)
+    for (const rx of [-0.90, 0.90]) {
+      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.38, 1.18), bodyMat);
+      rearArch.position.set(rx, 0.21, -1.35);
+      rearArch.castShadow = true;
+      this.chassisMainGroup.add(rearArch);
+
+      // Rear arch brake duct / cooling vent cutout
+      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.10), trimMat);
+      vent.position.set(rx * 1.02, 0.12, -0.80);
+      this.chassisMainGroup.add(vent);
+    }
+
+    // =========================================================================
+    // 4. FRONT RALLY BUMPER, SPLITTER & ALUMINUM BASH PLATE
+    // =========================================================================
+    // Main front bumper beam
+    const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.30, 0.26), bodyMat);
+    frontBumper.position.set(0, 0.17, 2.02);
+    frontBumper.castShadow = true;
+    this.frontBumperGroup.add(frontBumper);
+
+    // Lower aerodynamic chin splitter
+    const frontSplitter = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.05, 0.36), trimMat);
+    frontSplitter.position.set(0, 0.01, 2.06);
+    this.frontBumperGroup.add(frontSplitter);
+
+    // Front center radiator intake air dam
+    const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
+    radiatorGrille.position.set(0, 0.13, 2.155);
+    this.frontBumperGroup.add(radiatorGrille);
+
+    // Aluminum underbody bash / skid plate
+    const bashPlate = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.04, 0.58), bashPlateMat);
+    bashPlate.position.set(0, -0.06, 1.82);
+    bashPlate.rotation.x = 0.26; // Slopes up to front lip
+    this.frontBumperGroup.add(bashPlate);
+
+    // Rally tow recovery loop
+    const towLoop = new THREE.Mesh(
+      new THREE.TorusGeometry(0.045, 0.015, 8, 16),
+      new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.6 })
+    );
+    towLoop.position.set(0.48, 0.04, 2.18);
+    this.frontBumperGroup.add(towLoop);
+
+    // Quad front rally pod driving lamps
+    for (let i = -1.5; i <= 1.5; i += 1.0) {
+      const lampHousing = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.125, 0.125, 0.10, 16),
+        trimMat
+      );
+      lampHousing.rotateX(Math.PI / 2);
+      lampHousing.position.set(i * 0.33, 0.24, 2.08);
+      this.frontBumperGroup.add(lampHousing);
+
+      const lampLens = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.11, 0.11, 0.02, 16),
+        new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          emissive: 0xffffff,
+          emissiveIntensity: 0.65,
+          flatShading: true,
+        })
+      );
+      lampLens.rotateX(Math.PI / 2);
+      lampLens.position.set(i * 0.33, 0.24, 2.135);
+      this.frontBumperGroup.add(lampLens);
+    }
+
+    // =========================================================================
+    // 5. REAR RALLY BUMPER, DIFFUSER & DUAL EXHAUST PIPES
+    // =========================================================================
+    // Rear bumper beam
+    const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.30, 0.26), bodyMat);
+    rearBumper.position.set(0, 0.17, -2.00);
+    rearBumper.castShadow = true;
+    this.chassisMainGroup.add(rearBumper);
+
+    // Lower rear diffuser tray
+    const rearDiffuser = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.04, 0.34), trimMat);
+    rearDiffuser.position.set(0, -0.03, -1.98);
+    this.chassisMainGroup.add(rearDiffuser);
+
+    // Vertical diffuser strakes
+    for (const dx of [-0.48, -0.16, 0.16]) {
+      const strake = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.10, 0.28), trimMat);
+      strake.position.set(dx, -0.06, -1.98);
+      this.chassisMainGroup.add(strake);
+    }
+
+    // Heat shield plate above exhaust tips
+    const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.14), bashPlateMat);
+    heatShield.position.set(0.53, 0.05, -2.132);
+    heatShield.rotation.y = Math.PI;
+    this.chassisMainGroup.add(heatShield);
+
+    // DUAL EXHAUST PIPES (Polished stainless steel tailpipes)
+    for (const ex of [0.46, 0.60]) {
+      const exhaustPipe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.065, 0.065, 0.24, 16),
+        exhaustMat
+      );
+      exhaustPipe.rotateX(Math.PI / 2);
+      exhaustPipe.position.set(ex, -0.04, -2.10);
+      this.chassisMainGroup.add(exhaustPipe);
+
+      // Dark soot interior bore
+      const bore = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.05, 0.05, 0.05, 16),
+        exhaustBoreMat
+      );
+      bore.rotateX(Math.PI / 2);
+      bore.position.set(ex, -0.04, -2.205);
+      this.chassisMainGroup.add(bore);
+    }
+
+    // =========================================================================
+    // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS
+    // =========================================================================
+    // Dual aerodynamic pylons
+    for (const px of [-0.56, 0.56]) {
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
+      pylon.position.set(px, 0.62, -1.82);
+      pylon.rotation.x = 0.14; // Swept back
+      this.rearWingGroup.add(pylon);
+    }
+
+    // High-mounted contoured aerodynamic wing blade
+    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.05, 0.44), trimMat);
+    wingBlade.position.set(0, 0.79, -1.88);
+    wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
     wingBlade.castShadow = true;
-    carGroup.add(wingBlade);
+    this.rearWingGroup.add(wingBlade);
 
-    // 5. 3-Tier Taillights (Red, Amber, Reverse White matching sampled pixel data)
+    // Trailing edge Gurney flap wickerbill
+    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.03, 0.02), trimMat);
+    gurneyFlap.position.set(0, 0.825, -2.09);
+    this.rearWingGroup.add(gurneyFlap);
+
+    // Vertical aerodynamic wing endplates
+    for (const ex of [-0.88, 0.88]) {
+      const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.48), trimMat);
+      endplate.position.set(ex, 0.79, -1.88);
+      this.rearWingGroup.add(endplate);
+    }
+
+    // =========================================================================
+    // 7. TAILLIGHT CLUSTERS, GLOW QUADS & "APEX RALLY" LICENSE PLATE
+    // =========================================================================
     // Left cluster
     const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
-    tlRedL.position.set(-0.55, 0.30, -2.06);
-    carGroup.add(tlRedL);
+    tlRedL.position.set(-0.55, 0.30, -2.13);
+    this.chassisMainGroup.add(tlRedL);
 
     const tlAmberL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
-    tlAmberL.position.set(-0.63, 0.19, -2.06);
-    carGroup.add(tlAmberL);
+    tlAmberL.position.set(-0.63, 0.19, -2.13);
+    this.chassisMainGroup.add(tlAmberL);
 
     const tlWhiteL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
-    tlWhiteL.position.set(-0.47, 0.19, -2.06);
-    carGroup.add(tlWhiteL);
+    tlWhiteL.position.set(-0.47, 0.19, -2.13);
+    this.chassisMainGroup.add(tlWhiteL);
 
     // Right cluster
     const tlRedR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
-    tlRedR.position.set(0.55, 0.30, -2.06);
-    carGroup.add(tlRedR);
+    tlRedR.position.set(0.55, 0.30, -2.13);
+    this.chassisMainGroup.add(tlRedR);
 
     const tlAmberR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
-    tlAmberR.position.set(0.63, 0.19, -2.06);
-    carGroup.add(tlAmberR);
+    tlAmberR.position.set(0.63, 0.19, -2.13);
+    this.chassisMainGroup.add(tlAmberR);
 
     const tlWhiteR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
-    tlWhiteR.position.set(0.47, 0.19, -2.06);
-    carGroup.add(tlWhiteR);
+    tlWhiteR.position.set(0.47, 0.19, -2.13);
+    this.chassisMainGroup.add(tlWhiteR);
 
-    // Glow quads behind each brake light cluster (larger soft emissive backing plates)
+    // Glow quads behind each brake light cluster
     const glowGeom = new THREE.PlaneGeometry(0.42, 0.18);
     const glowL = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
-    glowL.position.set(-0.55, 0.30, -2.062);
+    glowL.position.set(-0.55, 0.30, -2.132);
     glowL.rotation.y = Math.PI;
-    carGroup.add(glowL);
+    this.chassisMainGroup.add(glowL);
 
     const glowR = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
-    glowR.position.set(0.55, 0.30, -2.062);
+    glowR.position.set(0.55, 0.30, -2.132);
     glowR.rotation.y = Math.PI;
-    carGroup.add(glowR);
+    this.chassisMainGroup.add(glowR);
 
-    // 6. Custom License Plate: "APEX RALLY" (Replaced WISHLIST as requested!)
+    // Custom License Plate: "APEX RALLY" + Bloom sprites
     if (typeof document !== 'undefined') {
-      // Soft radial bloom sprites for brake lights
       const bCanvas = document.createElement('canvas');
       bCanvas.width = 128;
       bCanvas.height = 128;
       const bctx = bCanvas.getContext('2d')!;
       const grad = bctx.createRadialGradient(64, 64, 4, 64, 64, 64);
-      grad.addColorStop(0, 'rgba(255, 245, 230, 1.0)'); // white-hot emitter core
-      grad.addColorStop(0.18, 'rgba(255, 30, 0, 0.95)');  // vibrant pure red
-      grad.addColorStop(0.45, 'rgba(255, 10, 0, 0.60)');  // rich saturated bloom
-      grad.addColorStop(0.75, 'rgba(220, 0, 0, 0.22)');   // soft outer aura
-      grad.addColorStop(1.0, 'rgba(180, 0, 0, 0.0)');     // transparent
+      grad.addColorStop(0, 'rgba(255, 245, 230, 1.0)');
+      grad.addColorStop(0.18, 'rgba(255, 30, 0, 0.95)');
+      grad.addColorStop(0.45, 'rgba(255, 10, 0, 0.60)');
+      grad.addColorStop(0.75, 'rgba(220, 0, 0, 0.22)');
+      grad.addColorStop(1.0, 'rgba(180, 0, 0, 0.0)');
       bctx.fillStyle = grad;
       bctx.fillRect(0, 0, 128, 128);
       const bTex = new THREE.CanvasTexture(bCanvas);
@@ -1422,8 +1943,8 @@ export class CustomRallyVehicle {
       });
       this.brakeLightSpriteL = new THREE.Sprite(spriteMatL);
       this.brakeLightSpriteL.scale.set(0.85, 0.50, 1);
-      this.brakeLightSpriteL.position.set(-0.55, 0.30, -2.12);
-      carGroup.add(this.brakeLightSpriteL);
+      this.brakeLightSpriteL.position.set(-0.55, 0.30, -2.18);
+      this.chassisMainGroup.add(this.brakeLightSpriteL);
 
       const spriteMatR = new THREE.SpriteMaterial({
         map: bTex,
@@ -1435,8 +1956,8 @@ export class CustomRallyVehicle {
       });
       this.brakeLightSpriteR = new THREE.Sprite(spriteMatR);
       this.brakeLightSpriteR.scale.set(0.85, 0.50, 1);
-      this.brakeLightSpriteR.position.set(0.55, 0.30, -2.12);
-      carGroup.add(this.brakeLightSpriteR);
+      this.brakeLightSpriteR.position.set(0.55, 0.30, -2.18);
+      this.chassisMainGroup.add(this.brakeLightSpriteR);
 
       const plateCanvas = document.createElement('canvas');
       plateCanvas.width = 256;
@@ -1456,39 +1977,16 @@ export class CustomRallyVehicle {
       const plateTex = new THREE.CanvasTexture(plateCanvas);
       const plateMat = new THREE.MeshBasicMaterial({ map: plateTex });
       const plateMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.14), plateMat);
-      plateMesh.position.set(0, 0.18, -2.065);
+      plateMesh.position.set(0, 0.18, -2.135);
       plateMesh.rotateY(Math.PI);
-      carGroup.add(plateMesh);
-    }
-
-    // 7. Exhaust Pipe
-    const exhaustGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.25, 8);
-    exhaustGeom.rotateX(Math.PI / 2);
-    const exhaustMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.2 });
-    const exhaust = new THREE.Mesh(exhaustGeom, exhaustMat);
-    exhaust.position.set(0.48, -0.02, -2.08);
-    carGroup.add(exhaust);
-
-    // 8. Quad Front Rally Pods
-    for (let i = -1.5; i <= 1.5; i += 1.0) {
-      const lampGeom = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 8);
-      lampGeom.rotateX(Math.PI / 2);
-      const lampMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        emissive: 0xffffff,
-        emissiveIntensity: 0.6,
-        flatShading: true,
-      });
-      const lamp = new THREE.Mesh(lampGeom, lampMat);
-      lamp.position.set(i * 0.32, 0.22, 2.06);
-      carGroup.add(lamp);
+      this.chassisMainGroup.add(plateMesh);
     }
 
     this.chassisMesh.add(carGroup);
   }
 
   private createWheelVisuals(): void {
-    const tireGeom = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.28, 12);
+    const tireGeom = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, 0.28, 16);
     tireGeom.rotateZ(Math.PI / 2);
 
     const tireMat = new THREE.MeshStandardMaterial({
@@ -1498,14 +1996,21 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
 
-    const rimGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.62, this.wheelRadius * 0.62, 0.29, 8);
+    const rimGeom = new THREE.CylinderGeometry(this.wheelRadius * 0.64, this.wheelRadius * 0.64, 0.29, 16);
     rimGeom.rotateZ(Math.PI / 2);
     const rimMat = new THREE.MeshStandardMaterial({
-      color: 0xd4d4d8,
-      roughness: 0.3,
-      metalness: 0.7,
+      color: 0xf8fafc, // OZ-Racing Alpine white rally rims
+      roughness: 0.25,
+      metalness: 0.35,
       flatShading: true,
     });
+
+    const caliperMat = new THREE.MeshStandardMaterial({
+      color: 0xdc2626, // Brembo red brake calipers
+      roughness: 0.3,
+      metalness: 0.6,
+    });
+    const caliperGeom = new THREE.BoxGeometry(0.08, 0.14, 0.06);
 
     for (let i = 0; i < 4; i++) {
       const wheelGroup = new THREE.Group();
@@ -1516,16 +2021,34 @@ export class CustomRallyVehicle {
       const rim = new THREE.Mesh(rimGeom, rimMat);
       wheelGroup.add(rim);
 
+      // Center lug nut hub cap
+      const capMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.8 });
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.30, 8), capMat);
+      cap.rotateZ(Math.PI / 2);
+      wheelGroup.add(cap);
+
+      // Red brake caliper sitting behind wheel
+      const caliper = new THREE.Mesh(caliperGeom, caliperMat);
+      const isRight = (i % 2 === 1);
+      caliper.position.set(isRight ? -0.06 : 0.06, 0.12, 0.0);
+      wheelGroup.add(caliper);
+
       this.scene.add(wheelGroup);
       this.wheelMeshes.push(wheelGroup);
     }
   }
+
+  public worldSurfaceQuery?: (worldX: number, worldZ: number) => { name: string; multiplier: number };
 
   public getSurfaceGripMultiplier(worldX: number, worldZ: number): { name: string; multiplier: number } {
     if (this.tuning.surfaceMode === 'tarmac') return { name: 'Tarmac', multiplier: this.tuning.gripMultiplierTarmac };
     if (this.tuning.surfaceMode === 'dirt') return { name: 'Dirt', multiplier: this.tuning.gripMultiplierDirt };
     if (this.tuning.surfaceMode === 'gravel') return { name: 'Gravel', multiplier: this.tuning.gripMultiplierGravel };
     if (this.tuning.surfaceMode === 'grass') return { name: 'Grass', multiplier: this.tuning.gripMultiplierGrass };
+
+    if (this.worldSurfaceQuery) {
+      return this.worldSurfaceQuery(worldX, worldZ);
+    }
 
     // 'auto' mode based on world coordinates:
     // Outer perimeter beyond 75m is grass/forest edge, inner sandbox is packed dirt

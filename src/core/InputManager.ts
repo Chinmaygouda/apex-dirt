@@ -7,6 +7,9 @@ export interface VehicleInputs {
   drivetrainToggle: boolean;
   demoSkidpad: boolean;
   demoHandbrake: boolean;
+  cameraCycle?: boolean;
+  headlightToggle?: boolean;
+  dayNightToggle?: boolean;
 }
 
 export class InputManager {
@@ -20,12 +23,18 @@ export class InputManager {
     drivetrainToggle: false,
     demoSkidpad: false,
     demoHandbrake: false,
+    cameraCycle: false,
+    headlightToggle: false,
+    dayNightToggle: false,
   };
 
   private prevResetPressed = false;
   private prevTogglePressed = false;
   private prevDemo1Pressed = false;
   private prevDemo2Pressed = false;
+  private prevCamPressed = false;
+  private prevHeadlightPressed = false;
+  private prevDayNightPressed = false;
 
   constructor() {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -64,6 +73,9 @@ export class InputManager {
     const kbToggle = !!(this.keys['KeyT'] || this.keys['t']);
     const kbDemo1 = !!(this.keys['Digit1'] || this.keys['1'] || this.keys['Numpad1']);
     const kbDemo2 = !!(this.keys['Digit2'] || this.keys['2'] || this.keys['Numpad2']);
+    const kbCamCycle = !!(this.keys['KeyC'] || this.keys['c']);
+    const kbHeadlight = !!(this.keys['KeyL'] || this.keys['l'] || this.keys['KeyH'] || this.keys['h']);
+    const kbDayNight = !!(this.keys['KeyN'] || this.keys['n']);
 
     // 2. Gamepad API
     let gpThrottle = 0;
@@ -72,6 +84,7 @@ export class InputManager {
     let gpHandbrake = false;
     let gpReset = false;
     let gpToggle = false;
+    let gpCamCycle = false;
 
     const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     const gp = gamepads[0];
@@ -97,6 +110,8 @@ export class InputManager {
       gpReset = (gp.buttons[3]?.pressed || gp.buttons[8]?.pressed) ?? false;
       // Drivetrain toggle: 'X' button (button 2)
       gpToggle = gp.buttons[2]?.pressed ?? false;
+      // Camera view cycle: 'Right Thumbstick Click' (button 11) or LB (button 4)
+      gpCamCycle = (gp.buttons[4]?.pressed || gp.buttons[11]?.pressed) ?? false;
     }
 
     // Combine inputs
@@ -106,6 +121,9 @@ export class InputManager {
     const rawHandbrake = kbHandbrake || gpHandbrake;
     const rawReset = kbReset || gpReset;
     const rawToggle = kbToggle || gpToggle;
+    const rawCam = kbCamCycle || gpCamCycle;
+    const rawHeadlight = kbHeadlight;
+    const rawDayNight = kbDayNight;
 
     // Trigger one-shot flags
     const resetTrigger = rawReset && !this.prevResetPressed;
@@ -120,6 +138,15 @@ export class InputManager {
     const demo2Trigger = kbDemo2 && !this.prevDemo2Pressed;
     this.prevDemo2Pressed = kbDemo2;
 
+    const camTrigger = rawCam && !this.prevCamPressed;
+    this.prevCamPressed = rawCam;
+
+    const headlightTrigger = rawHeadlight && !this.prevHeadlightPressed;
+    this.prevHeadlightPressed = rawHeadlight;
+
+    const dayNightTrigger = rawDayNight && !this.prevDayNightPressed;
+    this.prevDayNightPressed = rawDayNight;
+
     this.inputs.throttle = rawThrottle;
     this.inputs.brake = rawBrake;
     this.inputs.steer = rawSteer;
@@ -128,11 +155,35 @@ export class InputManager {
     this.inputs.drivetrainToggle = toggleTrigger;
     this.inputs.demoSkidpad = demo1Trigger;
     this.inputs.demoHandbrake = demo2Trigger;
+    this.inputs.cameraCycle = camTrigger;
+    this.inputs.headlightToggle = headlightTrigger;
+    this.inputs.dayNightToggle = dayNightTrigger;
 
     return this.inputs;
   }
 
   public getInputs(): VehicleInputs {
     return this.inputs;
+  }
+
+  /**
+   * Play dynamic dual-rumble haptic vibration on connected gamepad (Xbox/PlayStation)
+   */
+  public playRumble(strongMagnitude: number, weakMagnitude: number, durationMs: number = 100): void {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+      const gamepads = navigator.getGamepads();
+      const gp = gamepads[0];
+      if (gp && (gp as any).vibrationActuator && typeof (gp as any).vibrationActuator.playEffect === 'function') {
+        (gp as any).vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0,
+          duration: Math.min(1000, durationMs),
+          weakMagnitude: Math.min(1.0, Math.max(0, weakMagnitude)),
+          strongMagnitude: Math.min(1.0, Math.max(0, strongMagnitude)),
+        }).catch(() => {});
+      }
+    } catch {
+      // Gamepad haptics optional fallback
+    }
   }
 }
