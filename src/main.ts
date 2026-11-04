@@ -114,6 +114,12 @@ async function initGame() {
   }
   const damageController = new VehicleDamageController(scene, vehicle, physics, collisionDispatcher);
 
+  // Wire Gamepad Haptics (Collision Dual-Rumble)
+  collisionDispatcher.onCollision((event) => {
+    const intensity = Math.min(1.0, event.impulseMagnitude / 9000);
+    inputManager.playRumble(intensity, 0.5, 200);
+  });
+
   // 8g. Co-Driver Pace Notes System
   const coDriver = new CoDriverSystem(rallyWorld, vehicle);
 
@@ -395,6 +401,11 @@ async function initGame() {
 
     // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
     vehicleEffects.update(frameDt, inputs, camera.camera, sunLight);
+
+    // Dynamic Gamepad Vibration (Gravel slide scrub & handbrake drift)
+    if (Math.abs(vehicle.driftAngleDeg) > 12 || inputs.handbrake) {
+      inputManager.playRumble(0.06, Math.min(0.5, Math.abs(vehicle.driftAngleDeg) / 45), 70);
+    }
 
     // Follow vehicle with directional sunlight shadow camera
     if (vehicle.chassisMesh) {

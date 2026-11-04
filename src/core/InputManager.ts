@@ -165,4 +165,25 @@ export class InputManager {
   public getInputs(): VehicleInputs {
     return this.inputs;
   }
+
+  /**
+   * Play dynamic dual-rumble haptic vibration on connected gamepad (Xbox/PlayStation)
+   */
+  public playRumble(strongMagnitude: number, weakMagnitude: number, durationMs: number = 100): void {
+    try {
+      if (typeof navigator === 'undefined' || !navigator.getGamepads) return;
+      const gamepads = navigator.getGamepads();
+      const gp = gamepads[0];
+      if (gp && (gp as any).vibrationActuator && typeof (gp as any).vibrationActuator.playEffect === 'function') {
+        (gp as any).vibrationActuator.playEffect('dual-rumble', {
+          startDelay: 0,
+          duration: Math.min(1000, durationMs),
+          weakMagnitude: Math.min(1.0, Math.max(0, weakMagnitude)),
+          strongMagnitude: Math.min(1.0, Math.max(0, strongMagnitude)),
+        }).catch(() => {});
+      }
+    } catch {
+      // Gamepad haptics optional fallback
+    }
+  }
 }
