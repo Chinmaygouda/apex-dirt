@@ -320,13 +320,22 @@ export class CustomRallyVehicle {
     }
   }
 
-  constructor(private scene: THREE.Scene, private physics: PhysicsWorld) {
+  constructor(private scene: THREE.Scene, private physics: PhysicsWorld, dispatcher?: any) {
     this.chassisMesh = new THREE.Group();
     this.setupWheelAnchors();
     this.createChassisVisuals();
     this.createWheelVisuals();
     this.initPhysics();
+    if (dispatcher) {
+      this.registerCollisionDispatcher(dispatcher);
+    }
     this.scene.add(this.chassisMesh);
+  }
+
+  public registerCollisionDispatcher(dispatcher: any): void {
+    if (dispatcher && typeof dispatcher.registerCarCollider === 'function') {
+      dispatcher.registerCarCollider(this.chassisCollider, this.chassisBody);
+    }
   }
 
   private setupWheelAnchors(): void {
@@ -359,7 +368,8 @@ export class CustomRallyVehicle {
       .setDensity(270)
       .setFriction(0.05)
       .setRestitution(0.05)
-      .setTranslation(0, 0.16, 0);
+      .setTranslation(0, 0.16, 0)
+      .setCollisionGroups((0x0002 << 16) | 0xffff);
     colDesc.setActiveEvents(rapier.ActiveEvents.COLLISION_EVENTS | rapier.ActiveEvents.CONTACT_FORCE_EVENTS);
 
     this.chassisCollider = this.physics.world.createCollider(colDesc, this.chassisBody);
@@ -648,13 +658,14 @@ export class CustomRallyVehicle {
         { x: rayDir.x, y: rayDir.y, z: rayDir.z }
       );
 
-      // Hit filter excluding chassis itself
+      // Hit filter excluding chassis itself and querying only GROUP_GROUND (0x0001)
+      const filterGroups = (0x0020 << 16) | 0x0001;
       const hit = this.physics.world.castRayAndGetNormal(
         ray,
         rayLength,
         true,
         undefined,
-        undefined,
+        filterGroups,
         undefined,
         this.chassisBody
       );

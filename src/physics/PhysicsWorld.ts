@@ -24,7 +24,11 @@ export class PhysicsWorld {
    * Run 120 Hz substepping decoupled from variable render frame time dt.
    * Calls onSubstep callback on each 120 Hz step so vehicle controllers can apply forces/updates.
    */
-  public step(frameDt: number, onSubstep: (substepDt: number) => void): void {
+  public step(
+    frameDt: number,
+    onSubstep: (substepDt: number) => void,
+    onAfterSubstep?: (substepDt: number) => void
+  ): void {
     if (!this.isReady) return;
 
     // Clamp frameDt to avoid huge lag spike spiral
@@ -41,6 +45,7 @@ export class PhysicsWorld {
       } else {
         this.world.step();
       }
+      onAfterSubstep?.(dt);
       this.timeAccumulator -= dt;
       substeps++;
     }
