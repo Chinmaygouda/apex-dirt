@@ -105,3 +105,4 @@ export class ProvingGroundManager {
     this.vehicle.resetPosition();
   }
 }
+

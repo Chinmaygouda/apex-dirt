@@ -404,8 +404,7 @@ async function initGame() {
     stageManager.update(frameDt);
 
     // Update Telemetry HUD & Debug Overlay
-
-    hud.update(telemetry, stageManager);
+    hud.update(telemetry, stageManager as any);
     debugOverlay.update(telemetry);
 
     // Update Procedural Audio Engine (Phase 5)
