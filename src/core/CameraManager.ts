@@ -23,7 +23,7 @@ export class CameraManager {
   private headLookOffset = new THREE.Vector3();
 
   // Cockpit local eye position (Driver seat left side, seated back in bucket seat for spacious view)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.32, 0.62, -0.28);
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.62, -0.28);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
