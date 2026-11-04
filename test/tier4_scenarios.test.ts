@@ -56,14 +56,11 @@ registerTest(4, 'T4_SCENARIO_01', 'Scenario: Rally Run', 'Full stage high-speed 
 
     harness.step(dt, inputs);
     stage.update(dt);
-
     const telem = harness.vehicle.getTelemetry(inputs);
     audio.update(telem);
   }
 
-  console.log('T4_01 pos:', harness.vehicle.chassisBody.translation(), 'linvel:', harness.vehicle.chassisBody.linvel());
   const finalTelem = harness.vehicle.getTelemetry({ throttle: 1, brake: 0, steer: 0, handbrake: false, reset: false, drivetrainToggle: false, demoSkidpad: false, demoHandbrake: false });
-  console.log('T4_SCENARIO_01 speedMph:', finalTelem.speedMph, 'gear:', harness.vehicle.currentGear);
   expect(stage.stageTimeS).toBeGreaterThan(3.0, 'Stage timer must accumulate elapsed racing time');
   expect(finalTelem.speedMph).toBeGreaterThan(25, 'Vehicle must accelerate during high-speed run');
   expect(harness.vehicle.currentGear).toBeGreaterThanOrEqual(1, 'Transmission must engage drive gear');
