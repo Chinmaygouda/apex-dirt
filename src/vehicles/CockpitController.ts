@@ -370,24 +370,24 @@ export class CockpitController {
 
     // Instrument Binnacle Hood (hollow cowl framing dials ahead of driver)
     const cowlRoof = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.016, 0.14), dashMat);
-    cowlRoof.position.set(this.wheelCenter.x, 0.565, 0.27);
+    cowlRoof.position.set(this.wheelCenter.x, 0.585, 0.27);
     cowlRoof.rotation.x = -0.14;
     this.group.add(cowlRoof);
 
     // Cowl side cheeks
     const leftCheek = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.09, 0.12), dashMat);
-    leftCheek.position.set(this.wheelCenter.x - 0.19, 0.515, 0.27);
+    leftCheek.position.set(this.wheelCenter.x - 0.19, 0.535, 0.27);
     leftCheek.rotation.x = -0.14;
     this.group.add(leftCheek);
 
     const rightCheek = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.09, 0.12), dashMat);
-    rightCheek.position.set(this.wheelCenter.x + 0.19, 0.515, 0.27);
+    rightCheek.position.set(this.wheelCenter.x + 0.19, 0.535, 0.27);
     rightCheek.rotation.x = -0.14;
     this.group.add(rightCheek);
 
     // Cluster backplate
     const backplate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 0.015), dashMat);
-    backplate.position.set(this.wheelCenter.x, 0.51, 0.33);
+    backplate.position.set(this.wheelCenter.x, 0.53, 0.33);
     backplate.rotation.x = -0.14;
     this.group.add(backplate);
 
@@ -807,7 +807,7 @@ export class CockpitController {
         side: THREE.DoubleSide,
       })
     );
-    tachoMesh.position.set(this.wheelCenter.x - 0.08, 0.515, 0.315);
+    tachoMesh.position.set(this.wheelCenter.x - 0.075, 0.53, 0.30);
     tachoMesh.rotation.x = -0.14;
     this.group.add(tachoMesh);
 
@@ -826,7 +826,7 @@ export class CockpitController {
         side: THREE.DoubleSide,
       })
     );
-    speedoMesh.position.set(this.wheelCenter.x + 0.08, 0.515, 0.315);
+    speedoMesh.position.set(this.wheelCenter.x + 0.075, 0.53, 0.30);
     speedoMesh.rotation.x = -0.14;
     this.group.add(speedoMesh);
 
