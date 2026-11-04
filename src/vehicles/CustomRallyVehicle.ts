@@ -1545,10 +1545,12 @@ export class CustomRallyVehicle {
     });
 
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x1a2634,
-      roughness: 0.1,
-      metalness: 0.6,
-      flatShading: true,
+      color: 0x64748b,
+      roughness: 0.05,
+      metalness: 0.1,
+      transparent: true,
+      opacity: 0.20,
+      depthWrite: false,
     });
 
     this.runningLightMat = new THREE.MeshStandardMaterial({
@@ -1750,6 +1752,7 @@ export class CustomRallyVehicle {
       apillar.position.set(ax, 0.62, 0.38);
       apillar.rotation.x = -0.68;
       this.chassisMainGroup.add(apillar);
+      this.cockpitObscuringMeshes.push(apillar);
     }
 
     // Coupe roof cap
@@ -1787,10 +1790,12 @@ export class CustomRallyVehicle {
       const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 0.68), glassMat);
       sideGlass.position.set(sx, 0.63, -0.25);
       this.chassisMainGroup.add(sideGlass);
+      this.cockpitObscuringMeshes.push(sideGlass);
 
       const quarterGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.38), glassMat);
       quarterGlass.position.set(sx, 0.58, -0.72);
       this.chassisMainGroup.add(quarterGlass);
+      this.cockpitObscuringMeshes.push(quarterGlass);
     }
 
     // Rear trunk deck lid extending from base of sloped rear window to rear valence

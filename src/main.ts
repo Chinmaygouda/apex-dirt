@@ -12,6 +12,11 @@ import { TelemetryHUD } from './ui/TelemetryHUD';
 import { VehicleDebugOverlay } from './ui/VehicleDebugOverlay';
 import { TuningPanel } from './ui/TuningPanel';
 import { THREE_PALETTE } from './core/Constants';
+import { RallyStageWorld, STAGE_PALETTE } from './world/RallyStageWorld';
+import { SandboxEnvironment } from './world/SandboxEnvironment';
+import { WildlifeCrossingManager } from './world/WildlifeCrossingManager';
+import { CoDriverSystem } from './gameplay/CoDriverSystem';
+import { StageManager } from './gameplay/StageManager';
 import { ProvingGroundWorld } from './world/ProvingGroundWorld';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
 

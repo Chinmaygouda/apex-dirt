@@ -829,6 +829,14 @@ export class TelemetryHUD {
     if (this.cameraBadge) {
       this.cameraBadge.textContent = `🎥 ${mode} [C]`;
     }
+    const hudBottomLeft = this.container.querySelector('.hud-bottom-left') as HTMLElement;
+    if (hudBottomLeft) {
+      hudBottomLeft.style.display = mode === 'COCKPIT_FPV' ? 'none' : 'block';
+    }
+    const hudBottomRight = this.container.querySelector('.hud-bottom-right') as HTMLElement;
+    if (hudBottomRight) {
+      hudBottomRight.style.display = mode === 'COCKPIT_FPV' ? 'none' : 'flex';
+    }
     const speedoWrap = this.container.querySelector('.speedo-wrap') as HTMLElement;
     if (speedoWrap) {
       // In Cockpit FPV, hide the 2D speedometer canvas dial so it does not obstruct the view!

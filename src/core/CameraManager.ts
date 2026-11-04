@@ -23,7 +23,7 @@ export class CameraManager {
   private headLookOffset = new THREE.Vector3();
 
   // Cockpit local eye position (Driver seat left side, seated back in bucket seat for spacious view)
-  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.63, -0.38);
+  private readonly cockpitEyeOffset = new THREE.Vector3(-0.33, 0.62, -0.36);
   // Hood local camera position (Front center bonnet)
   private readonly hoodEyeOffset = new THREE.Vector3(0.0, 0.50, 1.55);
 
@@ -75,9 +75,9 @@ export class CameraManager {
     const speedMph = Math.hypot(linvel.x, linvel.y, linvel.z) * 2.23694;
 
     if (this.currentMode === 'COCKPIT_FPV') {
-      if (this.camera.near !== 0.04) { this.camera.near = 0.04; this.camera.updateProjectionMatrix(); }
-      // Dynamic cockpit FOV: 78 deg base for spacious peripheral view, expanding to 86 deg at speed
-      const targetFov = THREE.MathUtils.lerp(78, 86, Math.min(1.0, speedMph / 120.0));
+      if (this.camera.near !== 0.02) { this.camera.near = 0.02; this.camera.updateProjectionMatrix(); }
+      // Dynamic cockpit FOV: 78 deg base for spacious peripheral view, expanding to 88 deg at speed
+      const targetFov = THREE.MathUtils.lerp(78, 88, Math.min(1.0, speedMph / 120.0));
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1.0, 6.0 * dt));
       this.camera.updateProjectionMatrix();
 
@@ -87,8 +87,8 @@ export class CameraManager {
 
       // Camera orientation: rock-steady forward view locked to vehicle chassis (NO steer yaw rotation).
       // Only the steering wheel in the cockpit rotates when steering!
-      // -1.85m downward pitch over 30m horizon frames windshield, track, and dashboard naturally (like DiRT Rally 2.0).
-      const lookTarget = worldEye.clone().addScaledVector(forward, 30.0).addScaledVector(up, -1.85);
+      // -4.2m downward pitch over 30m horizon frames windshield, track, and dashboard naturally (matches WRC reference).
+      const lookTarget = worldEye.clone().addScaledVector(forward, 35.0).addScaledVector(up, -2.4);
       this.camera.lookAt(lookTarget);
       this.camera.up.copy(up);
 

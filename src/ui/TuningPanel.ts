@@ -14,6 +14,7 @@ export class TuningPanel {
   ) {
     this.gui = new GUI({ title: 'Apex Dirt - Vehicle Physics Tuner' });
     this.gui.close();
+    this.gui.hide();
     this.setupControls();
   }
 
