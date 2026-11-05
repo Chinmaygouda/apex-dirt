@@ -2087,20 +2087,90 @@ export class CustomRallyVehicle {
     deflectorPlate.position.set(0, -0.04, -1.42);
     this.chassisMainGroup.add(deflectorPlate);
 
+    // =========================================================================
+    // UNDERBODY HIGH-DETAIL ADDITIONS (CAD SPEC CHAPTER 4)
+    // =========================================================================
+
+    // Component A additions: 5 longitudinal ribs on front bash plate underside
+    const ribMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.5, metalness: 0.6, flatShading: true });
+    for (const rx of [-0.40, -0.20, 0, 0.20, 0.40]) {
+      const bashRib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.012, 0.52), ribMat);
+      bashRib.position.set(rx, -0.085, 1.82);
+      bashRib.rotation.x = 0.26; // Match bash plate slope
+      this.frontBumperGroup.add(bashRib);
+    }
+    // 8 corner bolt heads on bash plate
+    const boltMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.2, metalness: 0.9, flatShading: true });
+    for (const bx of [-0.46, 0.46]) {
+      for (const bz of [1.56, 2.08]) {
+        const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 6), boltMat);
+        bolt.position.set(bx, -0.07, bz);
+        this.frontBumperGroup.add(bolt);
+      }
+    }
+
+    // Component B additions: 3 flat aero diffusion ribs on undertray bottom
+    for (const rx of [-0.35, 0, 0.35]) {
+      const aeroRib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.015, 1.60), undertrayMat);
+      aeroRib.position.set(rx, -0.038, -0.05);
+      this.chassisMainGroup.add(aeroRib);
+    }
+    // Side skirt joining brackets (forward + aft)
+    const bracketMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.6, metalness: 0.5, flatShading: true });
+    for (const sx of [-0.56, 0.56]) {
+      for (const bz of [0.76, -0.86]) {
+        const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.06), bracketMat);
+        bracket.position.set(sx, -0.03, bz);
+        this.chassisMainGroup.add(bracket);
+      }
+    }
+
+    // Component C additions: diagonal triangulated braces between cradle rails
+    const diagMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.4, metalness: 0.75, flatShading: true });
+    // Forward diagonal brace (left-front to right-rear)
+    const diagBrace1 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.52, 8), diagMat);
+    diagBrace1.position.set(0, -0.03, -1.14);
+    diagBrace1.rotation.z = Math.PI / 2;
+    diagBrace1.rotation.x = 0.4;
+    this.chassisMainGroup.add(diagBrace1);
+    // Rearward diagonal brace (right-front to left-rear)
+    const diagBrace2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.52, 8), diagMat);
+    diagBrace2.position.set(0, -0.03, -1.65);
+    diagBrace2.rotation.z = Math.PI / 2;
+    diagBrace2.rotation.x = -0.4;
+    this.chassisMainGroup.add(diagBrace2);
+
+    // Diff breather stub (pointing up from diffPumpkin)
+    const breatherMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.5, metalness: 0.7, flatShading: true });
+    const breatherStub = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 8), breatherMat);
+    breatherStub.position.set(0.08, 0.20, -1.35);
+    this.chassisMainGroup.add(breatherStub);
+
+    // Halfshaft stub axles (horizontal, x = ±0.14 from diff center)
+    const halfshaftMat = new THREE.MeshStandardMaterial({ color: 0x71717a, roughness: 0.3, metalness: 0.85, flatShading: true });
+    for (const hx of [-0.14, 0.14]) {
+      const halfshaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.30, 8), halfshaftMat);
+      halfshaft.position.set(hx * 2.5, 0.06, -1.35);
+      halfshaft.rotation.z = Math.PI / 2;
+      this.chassisMainGroup.add(halfshaft);
+    }
+
     // Integrated ducktail lip spoiler on trunk deck
     const ducktailLip = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.06, 0.08), trimMat);
     ducktailLip.position.set(0, 0.50, -1.98);
     ducktailLip.rotation.x = -0.25;
     this.chassisMainGroup.add(ducktailLip);
 
-    // Heat shield plate above exhaust tips
-    const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.36, 0.14), bashPlateMat);
-    heatShield.position.set(0.53, 0.05, -2.132);
-    heatShield.rotation.y = Math.PI;
-    this.chassisMainGroup.add(heatShield);
+    // Individual heat shield plates flanking each exhaust tip (symmetric ±0.35)
+    for (const ex of [-0.35, 0.35]) {
+      const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.11), bashPlateMat);
+      heatShield.position.set(ex, 0.05, -2.132);
+      heatShield.rotation.y = Math.PI;
+      this.chassisMainGroup.add(heatShield);
+    }
 
-    // DUAL EXHAUST PIPES (Polished stainless steel tailpipes)
-    for (const ex of [0.46, 0.60]) {
+    // DUAL EXHAUST PIPES (Polished stainless steel tailpipes) — symmetric ±0.35
+    for (const ex of [-0.35, 0.35]) {
       const exhaustPipe = new THREE.Mesh(
         new THREE.CylinderGeometry(0.065, 0.065, 0.24, 16),
         exhaustMat
@@ -2131,26 +2201,68 @@ export class CustomRallyVehicle {
     }
 
     // =========================================================================
-    // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS
+    // 5b. ADDITIONAL EXTERIOR DETAILS (CAD SPEC §3.3–3.5)
     // =========================================================================
-    // Dual aerodynamic pylons
-    for (const px of [-0.56, 0.56]) {
-      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
-      pylon.position.set(px, 0.62, -1.82);
-      pylon.rotation.x = 0.14; // Swept back
-      this.rearWingGroup.add(pylon);
+
+    // Rear tow recovery hook (right side, red anodized aluminum)
+    const towHookMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.3, metalness: 0.7, flatShading: true });
+    const towHook = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 8, 16), towHookMat);
+    towHook.position.set(0.52, 0.04, -2.18);
+    towHook.rotation.x = Math.PI / 2;
+    this.chassisMainGroup.add(towHook);
+
+    // Door sill step plates (both sides, below B-pillar)
+    const stepPlateMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.3, flatShading: true });
+    for (const sx of [-1, 1]) {
+      const stepPlate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.60), stepPlateMat);
+      stepPlate.position.set(sx * 0.88, 0.0, -0.1);
+      this.chassisMainGroup.add(stepPlate);
     }
 
-    // High-mounted contoured aerodynamic wing blade
+    // Rear NACA brake-cooling ducts on rear quarter arch face
+    const nacaDuctMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, flatShading: true });
+    for (const sx of [-0.74, 0.74]) {
+      const nacaDuct = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.03), nacaDuctMat);
+      nacaDuct.position.set(sx, 0.14, -1.62);
+      this.chassisMainGroup.add(nacaDuct);
+      // Duct opening bore
+      const nacaBore = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.03, 0.02), nacaDuctMat);
+      nacaBore.position.set(sx, 0.14, -1.63);
+      this.chassisMainGroup.add(nacaBore);
+    }
+
+    // Roof scoop open intake bore (dark face at front of scoop)
+    const scoopBoreMat = new THREE.MeshBasicMaterial({ color: 0x060606 });
+    const scoopBore = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.02), scoopBoreMat);
+    scoopBore.position.set(0, 0.918, -0.21);
+    this.chassisMainGroup.add(scoopBore);
+
+    // =========================================================================
+    // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS
+    // =========================================================================
+    // Dual aerodynamic pylons (raised +0.08m per CAD spec §3.2)
+    for (const px of [-0.56, 0.56]) {
+      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
+      pylon.position.set(px, 0.70, -1.82);
+      pylon.rotation.x = 0.14; // Swept back
+      this.rearWingGroup.add(pylon);
+
+      // Mid-chord support brace between blade and pylon body
+      const midBrace = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.04), trimMat);
+      midBrace.position.set(px, 0.82, -1.95);
+      this.rearWingGroup.add(midBrace);
+    }
+
+    // High-mounted contoured aerodynamic wing blade (raised to y=0.87)
     const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.05, 0.44), trimMat);
-    wingBlade.position.set(0, 0.79, -1.88);
+    wingBlade.position.set(0, 0.87, -1.88);
     wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
     wingBlade.castShadow = true;
     this.rearWingGroup.add(wingBlade);
 
-    // Trailing edge Gurney flap wickerbill
+    // Trailing edge Gurney flap wickerbill (raised to y=0.905)
     const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.03, 0.02), trimMat);
-    gurneyFlap.position.set(0, 0.825, -2.09);
+    gurneyFlap.position.set(0, 0.905, -2.09);
     this.rearWingGroup.add(gurneyFlap);
 
     // Vertical aerodynamic wing endplates

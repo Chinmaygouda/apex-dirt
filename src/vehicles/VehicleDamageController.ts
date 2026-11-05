@@ -3,6 +3,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import { CustomRallyVehicle } from './CustomRallyVehicle';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { CollisionImpulseDispatcher, ICollisionContactEvent } from '../physics/CollisionImpulseDispatcher';
+import { VehicleEffects } from '../effects/VehicleEffects';
 
 interface DebrisPart {
   mesh: THREE.Group;
@@ -18,6 +19,7 @@ export class VehicleDamageController {
 
   private debrisList: DebrisPart[] = [];
   public onDamage?: (severity: 'minor' | 'medium' | 'severe', impulse: number) => void;
+  public vehicleEffects?: VehicleEffects;
 
   // Radiator steam effect if front takes heavy damage
   private radiatorSteamMesh?: THREE.Points;
@@ -92,6 +94,11 @@ export class VehicleDamageController {
 
     const J = event.impulseMagnitude;
     if (J < 1800) return;
+
+    // Trigger impact spark burst at collision world position
+    if (this.vehicleEffects) {
+      this.vehicleEffects.triggerImpactSparks(event.contactPoint);
+    }
 
     if (J >= 9000) {
       this.onDamage?.('severe', J);

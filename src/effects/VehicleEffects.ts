@@ -11,6 +11,8 @@ export class VehicleEffects {
   private exhaustFlameMesh: THREE.Mesh;
   private exhaustLight: THREE.PointLight;
   private exhaustTimer: number = 0;
+  private groundScrapeTimer: number = 0;
+  private _spawnY: number = 0;
   private prevThrottle: number = 0;
   private prevGear: number = 1;
   private wasShifting: boolean = false;
@@ -54,6 +56,8 @@ export class VehicleEffects {
     this.scene = scene;
     this.vehicle = vehicle;
     this.physics = physics;
+    // Record spawn Y so ground-scrape effect knows when chassis is dragging
+    this._spawnY = vehicle.chassisBody ? vehicle.chassisBody.translation().y : 0.32;
 
     // --- A. Twin Exhaust Flame & Light Setup ---
     const flameGroup = new THREE.Group();
@@ -72,8 +76,8 @@ export class VehicleEffects {
       depthWrite: false,
     });
 
-    // Twin nozzles for dual exhaust tailpipes (x = 0.46 and x = 0.60)
-    for (const ex of [0.46, 0.60]) {
+    // Twin nozzles for dual exhaust tailpipes — symmetric (x = -0.35 and x = +0.35)
+    for (const ex of [-0.35, 0.35]) {
       const outerGeo = new THREE.ConeGeometry(0.065, 0.36, 8);
       outerGeo.rotateX(-Math.PI / 2);
       const outerMesh = new THREE.Mesh(outerGeo, outerFlameMat);
@@ -253,7 +257,7 @@ export class VehicleEffects {
       this.exhaustTimer = THREE.MathUtils.randFloat(0.35, 0.50); // ~0.5s duration
       this.onExhaustPop?.();
       // Emit sudden smoke puff from exhaust tip
-      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.15).applyQuaternion(chassisQuat).add(chassisPos);
+      const worldExhaust = new THREE.Vector3(0, -0.04, -2.18).applyQuaternion(chassisQuat).add(chassisPos);
       this.emitParticle(
         worldExhaust.x, worldExhaust.y, worldExhaust.z,
         -linvel.x * 0.4 + THREE.MathUtils.randFloatSpread(0.8),
@@ -276,7 +280,7 @@ export class VehicleEffects {
         }
       });
 
-      const worldExhaust = new THREE.Vector3(0.53, -0.04, -2.15).applyQuaternion(chassisQuat).add(chassisPos);
+      const worldExhaust = new THREE.Vector3(0, -0.04, -2.18).applyQuaternion(chassisQuat).add(chassisPos);
       this.exhaustLight.position.copy(worldExhaust);
       this.exhaustLight.intensity = THREE.MathUtils.randFloat(7.0, 14.0);
     } else {
@@ -456,6 +460,50 @@ export class VehicleEffects {
     // Smooth threshold above 0.65 alignment
     const targetGlare = THREE.MathUtils.smoothstep(alignment, 0.65, 0.98);
     this.sunGlareIntensity += (targetGlare - this.sunGlareIntensity) * Math.min(1.0, 8.0 * dt);
+
+    // =========================================================
+    // 5. GROUND SCRAPE SPARKS: When chassis is bottoming out
+    // =========================================================
+    this.updateGroundScrape(dt);
+  }
+
+  /**
+   * Ground-scrape spark effect — yellow sparks emitted when chassis is riding very low
+   */
+  private updateGroundScrape(dt: number): void {
+    if (!this.vehicle.chassisBody) return;
+    const chassisY = this.vehicle.chassisBody.translation().y;
+    // Emit sparks when chassis is within 0.15m of spawn height (nearly bottoming out)
+    if (chassisY < this._spawnY + 0.15) {
+      this.groundScrapeTimer -= dt;
+      if (this.groundScrapeTimer <= 0) {
+        this.groundScrapeTimer = 0.04; // Emit burst every 40ms
+        const chassisPos = this.vehicle.chassisMesh.position;
+        const chassisQuat = this.vehicle.chassisMesh.quaternion;
+        const sparkColor = new THREE.Color(1.0, 0.85, 0.05); // Bright yellow
+        const count = 3 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < count; i++) {
+          const localOffset = new THREE.Vector3(
+            (Math.random() - 0.5) * 0.8,
+            -0.28,
+            (Math.random() - 0.5) * 0.6
+          );
+          const worldOffset = localOffset.applyQuaternion(chassisQuat).add(chassisPos);
+          this.emitParticle(
+            worldOffset.x, worldOffset.y, worldOffset.z,
+            (Math.random() - 0.5) * 3.0,
+            Math.random() * 1.5 + 0.5,
+            (Math.random() - 0.5) * 2.0,
+            0.04,
+            0.10,
+            0.09,
+            sparkColor
+          );
+        }
+      }
+    } else {
+      this.groundScrapeTimer = 0;
+    }
   }
 
   public triggerImpactSparks(worldPos: THREE.Vector3): void {
