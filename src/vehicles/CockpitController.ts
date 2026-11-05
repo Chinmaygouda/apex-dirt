@@ -432,13 +432,7 @@ export class CockpitController {
     grabStrap.rotation.y = 0.4;
     this.group.add(grabStrap);
 
-    // Red Anodized Quick-Release Net Latch Buckle at top of A-Pillar
-    const netLatch = new THREE.Mesh(
-      new THREE.BoxGeometry(0.016, 0.028, 0.020),
-      new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.8, roughness: 0.2 })
-    );
-    netLatch.position.set(-0.63, 0.76, 0.16);
-    this.group.add(netLatch);
+    // Quick-Release Net Latch Buckle mounted directly on door window net frame
 
     // Driver Side Exterior Rally Wing Mirror (visible through driver corner window)
     const mirrorBracketMat = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.6 });

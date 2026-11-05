@@ -484,7 +484,7 @@ export class TelemetryHUD {
     help.innerHTML = `
       <div><kbd>W</kbd> Throttle &nbsp; <kbd>S</kbd> Brake/Rev &nbsp; <kbd>A</kbd>/<kbd>D</kbd> Steer</div>
       <div><kbd>Space</kbd> Handbrake &nbsp; <kbd>C</kbd> Camera (Chase/Cockpit/Hood)</div>
-      <div><kbd>K</kbd> Livery &nbsp; <kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>R</kbd> Reset Stage</div>
+      <div><kbd>K</kbd> Livery &nbsp; <kbd>L</kbd> Headlights &nbsp; <kbd>N</kbd> Day/Night &nbsp; <kbd>X</kbd> Wipers &nbsp; <kbd>R</kbd> Reset Stage</div>
       <div style="color: #38bdf8; margin-top:4px;">🎮 Gamepad + Dual-Rumble Haptics Supported &bull; Vehicle Dynamics Proving Ground</div>
     `;
     this.container.appendChild(help);
