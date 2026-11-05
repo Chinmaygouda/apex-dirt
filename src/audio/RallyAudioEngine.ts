@@ -421,6 +421,39 @@ export class RallyAudioEngine {
   /**
    * Trigger procedural crash / metal deformation crunch sound
    */
+  /**
+   * Play procedural metallic skid plate underbody scrape audio (CAD §4.4)
+   * High-frequency abrasive titanium/aluminum friction sound modulated by speed.
+   */
+  public playSkidPlateScrape(velocity: number): void {
+    if (!this.ctx || this.isMuted) return;
+    const now = this.ctx.currentTime;
+    const ctx = this.ctx;
+
+    // Metallic screech burst using bandpassed noise
+    if (this.noiseSource && this.noiseSource.buffer) {
+      const scrapeSrc = ctx.createBufferSource();
+      scrapeSrc.buffer = this.noiseSource.buffer;
+
+      const scrapeFilter = ctx.createBiquadFilter();
+      scrapeFilter.type = 'bandpass';
+      const centerFreq = 2600 + Math.min(1800, velocity * 45);
+      scrapeFilter.frequency.setValueAtTime(centerFreq, now);
+      scrapeFilter.Q.setValueAtTime(4.5, now);
+
+      const scrapeGain = ctx.createGain();
+      const vol = Math.min(0.55, 0.15 + (velocity / 40.0) * 0.40);
+      scrapeGain.gain.setValueAtTime(vol, now);
+      scrapeGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      scrapeSrc.connect(scrapeFilter);
+      scrapeFilter.connect(scrapeGain);
+      scrapeGain.connect(this.masterGain!);
+      scrapeSrc.start(now);
+      scrapeSrc.stop(now + 0.15);
+    }
+  }
+
   public triggerCollision(severity: 'minor' | 'medium' | 'severe', impulse: number): void {
     if (!this.ctx || this.isMuted) return;
     const now = this.ctx.currentTime;

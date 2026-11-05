@@ -51,6 +51,7 @@ export class VehicleEffects {
   private sunGlareCtx: CanvasRenderingContext2D;
   public sunGlareIntensity: number = 0;
   public onExhaustPop?: () => void;
+  public onGroundScrape?: (speed: number) => void;
 
   constructor(scene: THREE.Scene, vehicle: CustomRallyVehicle, physics?: PhysicsWorld) {
     this.scene = scene;
@@ -478,6 +479,11 @@ export class VehicleEffects {
       this.groundScrapeTimer -= dt;
       if (this.groundScrapeTimer <= 0) {
         this.groundScrapeTimer = 0.04; // Emit burst every 40ms
+        const linvel = this.vehicle.chassisBody.linvel();
+        const speed = Math.hypot(linvel.x, linvel.y, linvel.z);
+        if (speed > 3.0) {
+          this.onGroundScrape?.(speed);
+        }
         const chassisPos = this.vehicle.chassisMesh.position;
         const chassisQuat = this.vehicle.chassisMesh.quaternion;
         const sparkColor = new THREE.Color(1.0, 0.85, 0.05); // Bright yellow

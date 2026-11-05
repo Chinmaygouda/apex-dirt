@@ -108,6 +108,8 @@ async function initGame() {
   collisionDispatcher.registerCarCollider(vehicle.chassisCollider);
   const damageController = new VehicleDamageController(scene, vehicle, physics, collisionDispatcher);
   damageController.vehicleEffects = vehicleEffects;
+  damageController.onDamage = (severity, impulse) => audioEngine.triggerCollision(severity, impulse);
+  vehicleEffects.onGroundScrape = (speed) => audioEngine.playSkidPlateScrape(speed);
 
   // Wire Gamepad Haptics (Collision Dual-Rumble)
   collisionDispatcher.onCollision((event) => {

@@ -1653,11 +1653,21 @@ export class CustomRallyVehicle {
     hood.castShadow = true;
     this.hoodGroup.add(hood);
 
-    // Twin hood heat extractor louvers
+    // Twin hood heat extractor louvers with aerodynamic cooling slats (CAD §5.2)
     for (const hx of [-0.36, 0.36]) {
-      const louver = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
-      louver.position.set(hx, 0.42, 1.25);
-      this.hoodGroup.add(louver);
+      // Louver recessed housing frame
+      const louverFrame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
+      louverFrame.position.set(hx, 0.42, 1.25);
+      this.hoodGroup.add(louverFrame);
+
+      // Angled extractor slats inside frame
+      for (let s = 0; s < 4; s++) {
+        const slatZ = 1.12 + s * 0.09;
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.015, 0.04), exhaustBoreMat);
+        slat.position.set(hx, 0.428, slatZ);
+        slat.rotation.x = -0.35; // Angled backward for high-velocity heat extraction
+        this.hoodGroup.add(slat);
+      }
     }
 
     // Central turbo intercooler hood scoop
@@ -1732,7 +1742,7 @@ export class CustomRallyVehicle {
       this.cockpitObscuringMeshes.push(mirrorGlass);
     }
 
-    // Polyurethane WRC mudflaps behind all four wheels
+    // Polyurethane WRC mudflaps behind all four wheels with aluminum retention brackets
     const mudflapMat = new THREE.MeshStandardMaterial({
       color: 0xb91c1c, // Rally red mudflaps
       roughness: 0.6,
@@ -1740,16 +1750,26 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
     this.mudflapMaterials.push(mudflapMat);
+    const bracketStripMat = new THREE.MeshStandardMaterial({ color: 0xa1a1aa, roughness: 0.3, metalness: 0.8, flatShading: true });
+
     for (const sx of [-0.89, 0.89]) {
       const frontMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.28, 0.02), mudflapMat);
       frontMudflap.position.set(sx, 0.04, 0.82);
       this.chassisMainGroup.add(frontMudflap);
       this.cockpitObscuringMeshes.push(frontMudflap);
+
+      const fBracket = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.02, 0.025), bracketStripMat);
+      fBracket.position.set(sx, 0.17, 0.82);
+      this.chassisMainGroup.add(fBracket);
     }
     for (const sx of [-0.91, 0.91]) {
       const rearMudflap = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.32, 0.02), mudflapMat);
       rearMudflap.position.set(sx, 0.04, -1.98);
       this.chassisMainGroup.add(rearMudflap);
+
+      const rBracket = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.02, 0.025), bracketStripMat);
+      rBracket.position.set(sx, 0.19, -1.98);
+      this.chassisMainGroup.add(rBracket);
     }
 
     // =========================================================================
@@ -1943,10 +1963,16 @@ export class CustomRallyVehicle {
       this.frontBumperGroup.add(strut);
     }
 
-    // Front center radiator intake air dam
+    // Front center radiator intake air dam with aluminum heat exchanger core (CAD §1.2)
     const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
     radiatorGrille.position.set(0, 0.13, 2.155);
     this.frontBumperGroup.add(radiatorGrille);
+
+    // Aluminum radiator cooling core behind grille mesh
+    const radCoreMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.4, metalness: 0.8, flatShading: true });
+    const radCore = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.13, 0.02), radCoreMat);
+    radCore.position.set(0, 0.13, 2.13);
+    this.frontBumperGroup.add(radCore);
 
     // Aluminum underbody bash / skid plate
     const bashPlate = new THREE.Mesh(new THREE.BoxGeometry(1.08, 0.04, 0.58), bashPlateMat);
@@ -2018,8 +2044,8 @@ export class CustomRallyVehicle {
     rearDiffuser.position.set(0, -0.03, -1.98);
     this.chassisMainGroup.add(rearDiffuser);
 
-    // Vertical diffuser strakes
-    for (const dx of [-0.48, -0.16, 0.16]) {
+    // Vertical diffuser strakes (4 symmetric strakes across rear valance)
+    for (const dx of [-0.48, -0.16, 0.16, 0.48]) {
       const strake = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.10, 0.28), trimMat);
       strake.position.set(dx, -0.06, -1.98);
       this.chassisMainGroup.add(strake);
