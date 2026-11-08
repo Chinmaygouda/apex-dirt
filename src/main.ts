@@ -220,6 +220,11 @@ async function initGame() {
   (window as any).damageController = damageController;
   (window as any).audioEngine = audioEngine;
   (window as any).provingGround = provingGround;
+  (window as any).vehicle = vehicle;
+  (window as any).vehicleEffects = vehicleEffects;
+  (window as any).collisionDispatcher = collisionDispatcher;
+  (window as any).scene = scene;
+  (window as any).physics = physics;
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
