@@ -12,6 +12,10 @@ export interface VehicleInputs {
   dayNightToggle?: boolean;
   liveryCycle?: boolean;
   wiperToggle?: boolean;
+  inspectToggle?: boolean;
+  inspectExit?: boolean;
+  inspectHudToggle?: boolean;
+  inspectDigit?: number | null;
 }
 
 export class InputManager {
@@ -30,6 +34,9 @@ export class InputManager {
     dayNightToggle: false,
     liveryCycle: false,
     wiperToggle: false,
+    inspectToggle: false,
+    inspectExit: false,
+    inspectDigit: null,
   };
 
   private prevResetPressed = false;
@@ -41,6 +48,10 @@ export class InputManager {
   private prevDayNightPressed = false;
   private prevLiveryPressed = false;
   private prevWiperPressed = false;
+  private prevInspectPressed = false;
+  private prevEscapePressed = false;
+  private prevInspectHudPressed = false;
+  private prevDigitsPressed: Record<number, boolean> = { 1: false, 2: false, 3: false, 4: false, 5: false, 6: false };
 
   constructor() {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -84,6 +95,8 @@ export class InputManager {
     const kbDayNight = !!(this.keys['KeyN'] || this.keys['n']);
     const kbLivery = !!(this.keys['KeyK'] || this.keys['k']);
     const kbWiper = !!(this.keys['KeyX'] || this.keys['x']);
+    const kbInspect = !!(this.keys['KeyI'] || this.keys['i']);
+    const kbEscape = !!(this.keys['Escape'] || this.keys['escape']);
 
     // 2. Gamepad API
     let gpThrottle = 0;
@@ -161,6 +174,25 @@ export class InputManager {
     const wiperTrigger = kbWiper && !this.prevWiperPressed;
     this.prevWiperPressed = kbWiper;
 
+    const inspectTrigger = kbInspect && !this.prevInspectPressed;
+    this.prevInspectPressed = kbInspect;
+
+    const escapeTrigger = kbEscape && !this.prevEscapePressed;
+    this.prevEscapePressed = kbEscape;
+
+    const kbInspectHud = !!(this.keys['KeyH'] || this.keys['h']);
+    const inspectHudTrigger = kbInspectHud && !this.prevInspectHudPressed;
+    this.prevInspectHudPressed = kbInspectHud;
+
+    let inspectDigitTrigger: number | null = null;
+    for (let d = 1; d <= 6; d++) {
+      const pressed = !!(this.keys[`Digit${d}`] || this.keys[`${d}`] || this.keys[`Numpad${d}`]);
+      if (pressed && !this.prevDigitsPressed[d]) {
+        inspectDigitTrigger = d;
+      }
+      this.prevDigitsPressed[d] = pressed;
+    }
+
     this.inputs.throttle = rawThrottle;
     this.inputs.brake = rawBrake;
     this.inputs.steer = rawSteer;
@@ -174,7 +206,10 @@ export class InputManager {
     this.inputs.dayNightToggle = dayNightTrigger;
     this.inputs.liveryCycle = liveryTrigger;
     this.inputs.wiperToggle = wiperTrigger;
-    this.inputs.liveryCycle = liveryTrigger;
+    this.inputs.inspectToggle = inspectTrigger;
+    this.inputs.inspectExit = escapeTrigger;
+    this.inputs.inspectHudToggle = inspectHudTrigger;
+    this.inputs.inspectDigit = inspectDigitTrigger;
 
     return this.inputs;
   }

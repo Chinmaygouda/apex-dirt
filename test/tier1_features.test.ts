@@ -28,6 +28,7 @@ import { VehicleEffects } from '../src/effects/VehicleEffects.js';
 import { RallyAudioEngine } from '../src/audio/RallyAudioEngine.js';
 import { InputManager } from '../src/core/InputManager.js';
 import { StageManager } from '../src/gameplay/StageManager.js';
+import { VehicleInspectionController, INSPECTION_ORDER, INSPECTION_PRESETS } from '../src/core/VehicleInspectionController.js';
 
 // ============================================================================
 // AREA R1: CORE CAR PHYSICS & WEIGHT TRANSFER
@@ -671,4 +672,215 @@ registerTest(1, 'T1_R6_06', 'R6: In-Browser', 'Full vehicle state reset clears v
   expect(Math.hypot(linvel.x, linvel.y, linvel.z)).toBeLessThan(0.1, 'Reset car velocity must be zero');
 
   harness.dispose();
+});
+
+// ============================================================================
+// AREA R7: MULTI-VIEW VEHICLE INSPECTION & CAD AUDIT
+// ============================================================================
+
+registerTest(1, 'T1_R7_01', 'R7: Inspection', 'InspectionController toggles active state, lighting rig visibility, and fires callbacks', async () => {
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+
+  expect(controller.isActive).toBe(false);
+  expect(controller.lightingRig.visible).toBe(false);
+
+  let activeState = false;
+  controller.onActiveChanged = (active) => { activeState = active; };
+
+  const toggledOn = controller.toggle();
+  expect(toggledOn).toBe(true);
+  expect(controller.isActive).toBe(true);
+  expect(controller.lightingRig.visible).toBe(true);
+  expect(activeState).toBe(true);
+
+  const toggledOff = controller.toggle();
+  expect(toggledOff).toBe(false);
+  expect(controller.isActive).toBe(false);
+  expect(controller.lightingRig.visible).toBe(false);
+  expect(activeState).toBe(false);
+});
+
+registerTest(1, 'T1_R7_02', 'R7: Inspection', 'InspectionController cycles through all 6 canonical CAD viewpoints in sequence', async () => {
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+  controller.enter();
+
+  expect(controller.activeView).toBe('FRONT');
+  expect(controller.activePresetIndex).toBe(0);
+
+  expect(controller.cyclePreset(true)).toBe('SIDE');
+  expect(controller.activePresetIndex).toBe(1);
+
+  expect(controller.cyclePreset(true)).toBe('REAR');
+  expect(controller.activePresetIndex).toBe(2);
+
+  expect(controller.cyclePreset(true)).toBe('TOP');
+  expect(controller.activePresetIndex).toBe(3);
+
+  expect(controller.cyclePreset(true)).toBe('UNDERBODY');
+  expect(controller.activePresetIndex).toBe(4);
+
+  expect(controller.cyclePreset(true)).toBe('ISOMETRIC');
+  expect(controller.activePresetIndex).toBe(5);
+
+  // Wraps back around to FRONT
+  expect(controller.cyclePreset(true)).toBe('FRONT');
+  expect(controller.activePresetIndex).toBe(0);
+});
+
+registerTest(1, 'T1_R7_03', 'R7: Inspection', 'Inspection viewpoints frame vehicle with correct local offsets, targets, up-vectors, and FOV', async () => {
+  const harness = await createSimulationHarness();
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+  const camera = new THREE.PerspectiveCamera(45, 16 / 9, 0.1, 1000);
+
+  controller.enter();
+
+  for (const view of INSPECTION_ORDER) {
+    controller.setPreset(view, true);
+    controller.update(camera, harness.vehicle, 0.05);
+
+    const preset = INSPECTION_PRESETS[view];
+    expect(controller.activeView).toBe(view);
+    expect(camera.fov).toBe(preset.fov);
+
+    // Camera world position must match chassisPos + preset.offset rotated by chassisQuat
+    const expectedPos = new THREE.Vector3().copy(preset.offset)
+      .applyQuaternion(harness.vehicle.chassisMesh.quaternion)
+      .add(harness.vehicle.chassisMesh.position);
+
+    expect(camera.position.distanceTo(expectedPos)).toBeLessThan(0.05, `Camera position for view ${view} must match preset offset`);
+  }
+
+  harness.dispose();
+});
+
+registerTest(1, 'T1_R7_04', 'R7: Inspection', 'Dedicated studio lighting rig provides key, fill, and dual upward underbody illuminators', async () => {
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+
+  expect(controller.lightingRig.children.length).toBeGreaterThanOrEqual(5);
+
+  let hasKey = false;
+  let hasFill = false;
+  let underbodyLightsCount = 0;
+  let hasAmbient = false;
+
+  for (const child of controller.lightingRig.children) {
+    if (child instanceof THREE.DirectionalLight) {
+      if (child.position.y > 10) {
+        if (child.position.x > 0) hasKey = true;
+        else hasFill = true;
+      } else if (child.position.y < 0) {
+        // Upward-facing underbody illuminator
+        underbodyLightsCount++;
+      }
+    } else if (child instanceof THREE.AmbientLight) {
+      hasAmbient = true;
+    }
+  }
+
+  expect(hasKey).toBe(true, 'Must include key directional light');
+  expect(hasFill).toBe(true, 'Must include soft fill directional light');
+  expect(underbodyLightsCount).toBeGreaterThanOrEqual(2, 'Must include at least 2 dedicated underbody uplights');
+  expect(hasAmbient).toBe(true, 'Must include studio ambient light');
+});
+
+registerTest(1, 'T1_R7_05', 'R7: Inspection', 'Underbody view hides ground plane for unobstructed sightline and restores visibility on exit', async () => {
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+  const mockGround = new THREE.Group();
+  mockGround.visible = true;
+
+  controller.setGroundObject(mockGround);
+  controller.enter();
+
+  controller.setPreset('FRONT');
+  expect(mockGround.visible).toBe(true);
+
+  controller.setPreset('UNDERBODY');
+  expect(mockGround.visible).toBe(false, 'Ground mesh must be hidden during underbody inspection for unobstructed line-of-sight');
+
+  controller.setPreset('SIDE');
+  expect(mockGround.visible).toBe(true, 'Ground mesh visibility must be restored when switching to side view');
+
+  controller.setPreset('UNDERBODY');
+  expect(mockGround.visible).toBe(false);
+
+  controller.exit();
+  expect(mockGround.visible).toBe(true, 'Ground mesh visibility must be restored when exiting inspection mode');
+});
+
+registerTest(1, 'T1_R7_06', 'R7: Inspection', 'InputManager tracks Key I toggle, Escape exit, and view digit triggers (1 to 6)', async () => {
+  const inputManager = new InputManager();
+
+  // Test Key 'I' trigger
+  (inputManager as any).keys['KeyI'] = true;
+  let inputs = inputManager.update();
+  expect(inputs.inspectToggle).toBe(true);
+
+  // Subsequent frame holding Key 'I' should not re-trigger one-shot
+  inputs = inputManager.update();
+  expect(inputs.inspectToggle).toBe(false);
+  (inputManager as any).keys['KeyI'] = false;
+
+  // Test Digit3 trigger (Plate 03: Rear Elevation)
+  (inputManager as any).keys['Digit3'] = true;
+  inputs = inputManager.update();
+  expect(inputs.inspectDigit).toBe(3);
+  (inputManager as any).keys['Digit3'] = false;
+
+  // Test Digit5 trigger (Plate 04: Underbody View)
+  (inputManager as any).keys['Digit5'] = true;
+  inputs = inputManager.update();
+  expect(inputs.inspectDigit).toBe(5);
+  (inputManager as any).keys['Digit5'] = false;
+
+  // Test Escape trigger
+  (inputManager as any).keys['Escape'] = true;
+  inputs = inputManager.update();
+  expect(inputs.inspectExit).toBe(true);
+  (inputManager as any).keys['Escape'] = false;
+});
+
+registerTest(1, 'T1_R7_07', 'R7: Inspection', 'CAD Master specification presets match Plates 01-06 dimensions and component armor zones', async () => {
+  expect(INSPECTION_ORDER.length).toBe(6);
+
+  // Front Plate 01: 1880mm width, 1860mm track
+  const front = INSPECTION_PRESETS.FRONT;
+  expect(front.plate).toContain('Plate 01');
+  expect(front.specs.some(s => s.value.includes('1,880 mm'))).toBe(true);
+  expect(front.specs.some(s => s.value.includes('1,860 mm'))).toBe(true);
+
+  // Side Plate 02: 4200mm length, 2700mm wheelbase, 1340mm height
+  const side = INSPECTION_PRESETS.SIDE;
+  expect(side.plate).toContain('Plate 02');
+  expect(side.specs.some(s => s.value.includes('4,200 mm'))).toBe(true);
+  expect(side.specs.some(s => s.value.includes('2,700 mm'))).toBe(true);
+  expect(side.specs.some(s => s.value.includes('1,340 mm'))).toBe(true);
+
+  // Rear Plate 03: 1900mm track, 1420mm wing, dual exhaust
+  const rear = INSPECTION_PRESETS.REAR;
+  expect(rear.plate).toContain('Plate 03');
+  expect(rear.specs.some(s => s.value.includes('1,900 mm'))).toBe(true);
+  expect(rear.specs.some(s => s.value.includes('1,420 mm'))).toBe(true);
+
+  // Top Plate 05: twin louvers, roof scoop
+  const top = INSPECTION_PRESETS.TOP;
+  expect(top.plate).toContain('Plate 05');
+  expect(top.upVector.z).toBe(1.0, 'Top view upVector must be +Z so vehicle forward points UP');
+
+  // Underbody Plate 04: Component A (sump guard), Component B (undertray), Component C (diff cradle)
+  const underbody = INSPECTION_PRESETS.UNDERBODY;
+  expect(underbody.plate).toContain('Plate 04');
+  expect(underbody.upVector.z).toBe(1.0, 'Underbody view upVector must be +Z so vehicle forward points UP');
+  expect(underbody.specs.some(s => s.label.includes('Component A'))).toBe(true);
+  expect(underbody.specs.some(s => s.label.includes('Component B'))).toBe(true);
+  expect(underbody.specs.some(s => s.label.includes('Component C'))).toBe(true);
+
+  // Isometric Plate 06: T45 roll cage, 28,500 Nm/deg
+  const iso = INSPECTION_PRESETS.ISOMETRIC;
+  expect(iso.plate).toContain('Plate 06');
+  expect(iso.specs.some(s => s.value.includes('T45'))).toBe(true);
 });

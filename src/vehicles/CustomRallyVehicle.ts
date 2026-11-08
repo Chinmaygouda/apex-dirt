@@ -1653,17 +1653,17 @@ export class CustomRallyVehicle {
     hood.castShadow = true;
     this.hoodGroup.add(hood);
 
-    // Twin hood heat extractor louvers with aerodynamic cooling slats (CAD §5.2)
-    for (const hx of [-0.36, 0.36]) {
-      // Louver recessed housing frame
-      const louverFrame = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.02, 0.42), trimMat);
-      louverFrame.position.set(hx, 0.42, 1.25);
+    // Twin hood heat extractor louvers with aerodynamic cooling slats (CAD §5.2: 420mm L x 280mm W at X=±0.32m, Z=+0.95m)
+    for (const hx of [-0.32, 0.32]) {
+      // Louver recessed housing frame (280mm W x 420mm L)
+      const louverFrame = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.02, 0.42), trimMat);
+      louverFrame.position.set(hx, 0.42, 0.95);
       this.hoodGroup.add(louverFrame);
 
       // Angled extractor slats inside frame
       for (let s = 0; s < 4; s++) {
-        const slatZ = 1.12 + s * 0.09;
-        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.015, 0.04), exhaustBoreMat);
+        const slatZ = 0.80 + s * 0.10;
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.015, 0.04), exhaustBoreMat);
         slat.position.set(hx, 0.428, slatZ);
         slat.rotation.x = -0.35; // Angled backward for high-velocity heat extraction
         this.hoodGroup.add(slat);
@@ -1824,9 +1824,9 @@ export class CustomRallyVehicle {
     roof.castShadow = true;
     this.chassisMainGroup.add(roof);
 
-    // Roof rally air scoop / periscope
-    const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.34), trimMat);
-    roofScoop.position.set(0, 0.915, -0.05);
+    // Roof rally air scoop / periscope (220mm wide x 90mm tall per CAD §5.2)
+    const roofScoop = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.09, 0.34), trimMat);
+    roofScoop.position.set(0, 0.925, -0.05);
     this.chassisMainGroup.add(roofScoop);
 
     this.cockpitObscuringMeshes.push(roof, roofScoop, windshield);
@@ -1896,28 +1896,28 @@ export class CustomRallyVehicle {
     // =========================================================================
     // 3. FLARED WIDE-BODY WHEEL ARCHES (BOX FENDERS)
     // =========================================================================
-    // Front flared blister arches (centered around front axle z = 1.35)
-    for (const fx of [-0.88, 0.88]) {
-      const frontArch = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.36, 0.98), bodyMat);
+    // Front flared blister arches (1,880mm overall front width at X=±0.940m per CAD §1.2)
+    for (const fx of [-0.86, 0.86]) {
+      const frontArch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.36, 0.98), bodyMat);
       frontArch.position.set(fx, 0.19, 1.35);
       frontArch.castShadow = true;
       this.chassisMainGroup.add(frontArch);
 
       // Inner wheel well liner
       const liner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.88), trimMat);
-      liner.position.set(fx * 0.94, 0.16, 1.35);
+      liner.position.set(fx * 0.95, 0.16, 1.35);
       this.chassisMainGroup.add(liner);
     }
 
-    // Rear muscular widebody box flares (centered around rear axle z = -1.35)
-    for (const rx of [-0.90, 0.90]) {
-      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.38, 1.18), bodyMat);
+    // Rear muscular widebody box flares (1,900mm overall rear width at X=±0.950m per CAD §3.2)
+    for (const rx of [-0.865, 0.865]) {
+      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.38, 1.18), bodyMat);
       rearArch.position.set(rx, 0.21, -1.35);
       rearArch.castShadow = true;
       this.chassisMainGroup.add(rearArch);
 
       // Protective matte black stone-guard film on front face of blister flare
-      const stoneGuard = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 0.02), trimMat);
+      const stoneGuard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.28, 0.02), trimMat);
       stoneGuard.position.set(rx, 0.18, -0.75);
       this.chassisMainGroup.add(stoneGuard);
 
@@ -2257,17 +2257,17 @@ export class CustomRallyVehicle {
       this.chassisMainGroup.add(nacaBore);
     }
 
-    // Roof scoop open intake bore (dark face at front of scoop)
+    // Roof scoop open intake bore (dark face at front of scoop, 180mm x 70mm)
     const scoopBoreMat = new THREE.MeshBasicMaterial({ color: 0x060606 });
-    const scoopBore = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.06, 0.02), scoopBoreMat);
-    scoopBore.position.set(0, 0.918, -0.21);
+    const scoopBore = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.07, 0.02), scoopBoreMat);
+    scoopBore.position.set(0, 0.928, -0.21);
     this.chassisMainGroup.add(scoopBore);
 
     // =========================================================================
-    // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS
+    // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS (CAD §3.2)
     // =========================================================================
-    // Dual aerodynamic pylons (raised +0.08m per CAD spec §3.2)
-    for (const px of [-0.56, 0.56]) {
+    // Dual aerodynamic pylons (mounted at X=±0.420m per CAD spec §3.2)
+    for (const px of [-0.42, 0.42]) {
       const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
       pylon.position.set(px, 0.70, -1.82);
       pylon.rotation.x = 0.14; // Swept back
@@ -2279,20 +2279,20 @@ export class CustomRallyVehicle {
       this.rearWingGroup.add(midBrace);
     }
 
-    // High-mounted contoured aerodynamic wing blade (raised to y=0.87)
-    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.05, 0.44), trimMat);
+    // High-mounted contoured aerodynamic wing blade (raised to y=0.87, width 1,420mm per CAD §3.2)
+    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.05, 0.44), trimMat);
     wingBlade.position.set(0, 0.87, -1.88);
     wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
     wingBlade.castShadow = true;
     this.rearWingGroup.add(wingBlade);
 
-    // Trailing edge Gurney flap wickerbill (raised to y=0.905)
-    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.03, 0.02), trimMat);
+    // Trailing edge Gurney flap wickerbill (raised to y=0.905, width 1,420mm per CAD §3.2)
+    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.03, 0.02), trimMat);
     gurneyFlap.position.set(0, 0.905, -2.09);
     this.rearWingGroup.add(gurneyFlap);
 
-    // Vertical aerodynamic wing endplates
-    for (const ex of [-0.88, 0.88]) {
+    // Vertical aerodynamic wing endplates (mounted at wing blade tips X=±0.710m)
+    for (const ex of [-0.71, 0.71]) {
       const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.48), trimMat);
       endplate.position.set(ex, 0.79, -1.88);
       this.rearWingGroup.add(endplate);

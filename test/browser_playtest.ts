@@ -392,7 +392,148 @@ async function runBrowserPlaytest() {
     console.log('  [SCREENSHOT] Saved browser_track_top_view.png');
     await client.evaluate(`window.__debugFreeCam = false;`);
 
-    // 10. Verify Zero Uncaught Fatal Exceptions
+    // 11. Verify Multi-View CAD Engineering Inspection Mode (Key 'I', '1'-'6', 'C', 'ESC')
+    console.log('\n--- VERIFYING CAD VEHICLE INSPECTION & MULTI-VIEW CAMERAS ---');
+    const hasInspectionController = await client.evaluate(`Boolean(window.inspectionController)`);
+    if (!hasInspectionController) {
+      throw new Error('window.inspectionController is not defined on global window');
+    }
+
+    // Restore vibrant APEX_RED livery and reset stage for crystal-clear CAD inspection
+    await client.evaluate(`
+      if (window.vehicle) {
+        window.vehicle.setLivery('APEX_RED');
+      }
+      if (window.hud) {
+        window.hud.setLivery('Apex Classic Red');
+      }
+      if (window.stageManager) {
+        window.stageManager.restart();
+      }
+    `);
+    await sleep(400);
+
+    // Toggle into inspection mode via Key 'I'
+    await client.dispatchKeyEvent('keyDown', 'i', 'KeyI');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'i', 'KeyI');
+    await sleep(250);
+
+    const isInspectActive = await client.evaluate(`Boolean(window.inspectionController && window.inspectionController.isActive)`);
+    if (!isInspectActive) {
+      throw new Error('Failed to enter inspection mode via Key "I"');
+    }
+    console.log('  [PASS] Successfully entered CAD Inspection Mode via Key "I"');
+
+    const artifactDir = 'C:\\Users\\Chinmaygouda\\.gemini\\antigravity\\brain\\dc1c784f-97c7-447f-a7ac-d2f7624b91de';
+    const writeShot = (name: string, data: string) => {
+      const buf = Buffer.from(data, 'base64');
+      fs.writeFileSync(name, buf);
+      if (fs.existsSync(artifactDir)) {
+        fs.writeFileSync(path.join(artifactDir, name), buf);
+      }
+    };
+
+    // View 1: FRONT ELEVATION [Plate 01]
+    await client.dispatchKeyEvent('keyDown', '1', 'Digit1');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '1', 'Digit1');
+    await sleep(300);
+    const view1 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view1 !== 'FRONT') throw new Error(`Expected FRONT view, got ${view1}`);
+    const shotInspectFront = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_front.png', shotInspectFront.data);
+    console.log('  [PASS] Verified FRONT Elevation View (Plate 01), saved browser_inspect_front.png');
+
+    // View 2: SIDE PROFILE [Plate 02]
+    await client.dispatchKeyEvent('keyDown', '2', 'Digit2');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '2', 'Digit2');
+    await sleep(300);
+    const view2 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view2 !== 'SIDE') throw new Error(`Expected SIDE view, got ${view2}`);
+    const shotInspectSide = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_side.png', shotInspectSide.data);
+    console.log('  [PASS] Verified SIDE Profile View (Plate 02), saved browser_inspect_side.png');
+
+    // View 3: REAR ELEVATION [Plate 03]
+    await client.dispatchKeyEvent('keyDown', '3', 'Digit3');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '3', 'Digit3');
+    await sleep(300);
+    const view3 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view3 !== 'REAR') throw new Error(`Expected REAR view, got ${view3}`);
+    const shotInspectRear = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_rear.png', shotInspectRear.data);
+    console.log('  [PASS] Verified REAR Elevation View (Plate 03), saved browser_inspect_rear.png');
+
+    // View 4: TOP PLAN [Plate 05]
+    await client.dispatchKeyEvent('keyDown', '4', 'Digit4');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '4', 'Digit4');
+    await sleep(300);
+    const view4 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view4 !== 'TOP') throw new Error(`Expected TOP view, got ${view4}`);
+    const shotInspectTop = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_top.png', shotInspectTop.data);
+    console.log('  [PASS] Verified TOP Plan View (Plate 05), saved browser_inspect_top.png');
+
+    // View 5: BOTTOM / UNDERBODY [Plate 04] (Ground occlusion toggle test)
+    await client.dispatchKeyEvent('keyDown', '5', 'Digit5');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '5', 'Digit5');
+    await sleep(300);
+    const view5 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view5 !== 'UNDERBODY') throw new Error(`Expected UNDERBODY view, got ${view5}`);
+    const groundHidden = await client.evaluate(`window.provingGround && !window.provingGround.group.visible`);
+    if (!groundHidden) throw new Error('Expected provingGround.group.visible to be false during UNDERBODY inspection');
+    const shotInspectUnderbody = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_underbody.png', shotInspectUnderbody.data);
+    console.log('  [PASS] Verified UNDERBODY View (Plate 04) with ground occlusion disabled, saved browser_inspect_underbody.png');
+
+    // View 6: 3/4 ISOMETRIC [Plate 06]
+    await client.dispatchKeyEvent('keyDown', '6', 'Digit6');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', '6', 'Digit6');
+    await sleep(300);
+    const view6 = await client.evaluate(`window.inspectionController.activeView`);
+    if (view6 !== 'ISOMETRIC') throw new Error(`Expected ISOMETRIC view, got ${view6}`);
+    const groundRestored = await client.evaluate(`window.provingGround && window.provingGround.group.visible`);
+    if (!groundRestored) throw new Error('Expected provingGround.group.visible to be true in ISOMETRIC inspection');
+    const shotInspectIso = await client.send('Page.captureScreenshot', { format: 'png' });
+    writeShot('browser_inspect_isometric.png', shotInspectIso.data);
+    console.log('  [PASS] Verified 3/4 ISOMETRIC View (Plate 06), saved browser_inspect_isometric.png');
+
+    // Test Key 'C' Cycling in Inspection Mode (ISOMETRIC -> FRONT)
+    await client.dispatchKeyEvent('keyDown', 'c', 'KeyC');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'c', 'KeyC');
+    await sleep(250);
+    const viewCycled = await client.evaluate(`window.inspectionController.activeView`);
+    if (viewCycled !== 'FRONT') throw new Error(`Expected Key 'C' to cycle from ISOMETRIC to FRONT, got ${viewCycled}`);
+    console.log('  [PASS] Verified Key "C" viewpoint cycling in Inspection Mode');
+
+    // Exit Inspection Mode via Escape
+    await client.dispatchKeyEvent('keyDown', 'Escape', 'Escape');
+    await sleep(50);
+    await client.dispatchKeyEvent('keyUp', 'Escape', 'Escape');
+    await sleep(250);
+
+    const isInspectActiveAfterExit = await client.evaluate(`window.inspectionController.isActive`);
+    if (isInspectActiveAfterExit) {
+      throw new Error('Inspection mode failed to exit on Escape key');
+    }
+    const groundRestoredOnExit = await client.evaluate(`window.provingGround && window.provingGround.group.visible`);
+    if (!groundRestoredOnExit) {
+      throw new Error('Ground visibility was not restored upon exiting inspection mode');
+    }
+    const currentCamMode = await client.evaluate(`window.cameraManager.currentMode`);
+    if (currentCamMode !== 'CHASE') {
+      throw new Error(`Expected camera mode CHASE after exiting inspection, got ${currentCamMode}`);
+    }
+    console.log('  [PASS] Cleanly exited Inspection Mode back to CHASE driving mode via Escape');
+
+    // 12. Verify Zero Uncaught Fatal Exceptions
     if (client.uncaughtExceptions.length > 0) {
       throw new Error(`Uncaught fatal browser exceptions detected:\n${client.uncaughtExceptions.join('\n')}`);
     }
@@ -430,7 +571,11 @@ async function runSyntheticVerification() {
   console.log('  [PASS] Dev server responded with HTTP 200');
 }
 
-runBrowserPlaytest().catch((err) => {
-  console.error('\nPlaytest execution failed:', err);
-  process.exit(1);
-});
+runBrowserPlaytest()
+  .then(() => {
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error('\nPlaytest execution failed:', err);
+    process.exit(1);
+  });

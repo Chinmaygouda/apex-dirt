@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { VehicleTelemetry } from '../vehicles/RapierBaselineVehicle';
 import { PALETTE } from '../core/Constants';
 import { StageManager, PaceNote } from '../gameplay/StageManager';
+import { InspectionPresetConfig } from '../core/VehicleInspectionController';
 
 export class TelemetryHUD {
   private container: HTMLElement;
@@ -30,6 +31,19 @@ export class TelemetryHUD {
   private todBadge?: HTMLElement;
   private liveryBadge?: HTMLElement;
   public onToggleLivery?: () => string;
+  public inspectBadge?: HTMLElement;
+  public onToggleInspection?: () => void;
+  public onSelectInspectionPreset?: (index: number) => void;
+  public onCycleInspectionPreset?: (forward: boolean) => void;
+  public onExitInspection?: () => void;
+
+  private inspectionOverlay!: HTMLElement;
+  private inspectViewTitleEl!: HTMLElement;
+  private inspectSpecPlateEl!: HTMLElement;
+  private inspectSpecGridEl!: HTMLElement;
+  private inspectSpecNotesEl!: HTMLElement;
+  private inspectButtons: HTMLElement[] = [];
+  private isInspecting = false;
 
   private steerBarFill!: HTMLElement;
   private throttleBarFill!: HTMLElement;
@@ -414,6 +428,211 @@ export class TelemetryHUD {
         font-size: 11px;
         font-weight: 700;
       }
+
+      /* Multi-View CAD Inspection Overlay */
+      .inspection-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        display: none;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 24px 32px;
+        background: transparent;
+        z-index: 150;
+        color: #f8fafc;
+      }
+      .inspect-top-bar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        pointer-events: auto;
+      }
+      .inspect-header-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .inspect-badge-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        color: #38bdf8;
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        border-radius: 4px;
+        padding: 4px 10px;
+        width: fit-content;
+      }
+      .inspect-view-title {
+        font-size: 26px;
+        font-weight: 900;
+        letter-spacing: 1px;
+        color: #ffffff;
+        text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+      }
+      .inspect-cad-subtitle {
+        font-size: 12px;
+        color: #94a3b8;
+        font-family: monospace;
+      }
+      .inspect-top-right-group {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .inspect-toggle-hud-btn {
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        color: #38bdf8;
+        font-weight: 800;
+        font-size: 12px;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .inspect-toggle-hud-btn:hover {
+        background: rgba(56, 189, 248, 0.35);
+        color: #ffffff;
+      }
+      .inspect-exit-btn {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+        font-weight: 800;
+        font-size: 12px;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .inspect-exit-btn:hover {
+        background: rgba(239, 68, 68, 0.4);
+        color: #ffffff;
+      }
+      .inspect-spec-card {
+        max-width: 480px;
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        border-radius: 12px;
+        padding: 16px 20px;
+        backdrop-filter: blur(8px);
+        margin-top: 10px;
+        pointer-events: auto;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .inspect-spec-card.minimized {
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-8px);
+      }
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+        border-radius: 12px;
+        padding: 16px 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 10px;
+      }
+      .inspect-spec-plate {
+        font-size: 12px;
+        font-weight: 800;
+        color: #38bdf8;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 6px;
+      }
+      .inspect-spec-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px 14px;
+        font-size: 11px;
+      }
+      .inspect-spec-item {
+        display: flex;
+        flex-direction: column;
+      }
+      .inspect-spec-label {
+        font-size: 10px;
+        color: #64748b;
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      .inspect-spec-val {
+        font-size: 11px;
+        color: #e2e8f0;
+        font-family: monospace;
+        font-weight: 700;
+      }
+      .inspect-spec-notes {
+        font-size: 11px;
+        color: #94a3b8;
+        line-height: 1.4;
+        background: rgba(0, 0, 0, 0.3);
+        border-radius: 6px;
+        padding: 8px 10px;
+        border-left: 3px solid #38bdf8;
+      }
+      .inspect-bottom-bar {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+      }
+      .inspect-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 10px;
+        padding: 6px 10px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      }
+      .inspect-btn {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .inspect-btn:hover {
+        background: rgba(56, 189, 248, 0.2);
+        color: #ffffff;
+        border-color: rgba(56, 189, 248, 0.4);
+      }
+      .inspect-btn.active {
+        background: #0284c7;
+        color: #ffffff;
+        border-color: #38bdf8;
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+      }
+      .inspect-hint-bar {
+        font-size: 12px;
+        color: #94a3b8;
+        background: rgba(0,0,0,0.45);
+        padding: 4px 16px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .inspect-hint-bar kbd {
+        background: rgba(255,255,255,0.18);
+        color: #ffffff;
+        padding: 1px 6px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-weight: 800;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -553,6 +772,7 @@ export class TelemetryHUD {
         </div>
       </div>
       <div class="hud-badges-row">
+        <div class="hud-badge" id="inspect-badge" style="cursor: pointer; pointer-events: auto; color: #38bdf8; font-weight: 700; border-color: rgba(56, 189, 248, 0.4);">🔍 INSPECT [I]</div>
         <div class="hud-badge" id="livery-badge" style="cursor: pointer; pointer-events: auto; color: #f8fafc;">🎨 APEX RED [K]</div>
         <div class="hud-badge" id="camera-badge" style="cursor: pointer; pointer-events: auto;">🎥 CHASE [C]</div>
         <div class="hud-badge" id="lights-badge" style="cursor: pointer; pointer-events: auto;">💡 OFF [L]</div>
@@ -595,6 +815,103 @@ export class TelemetryHUD {
         audioBadge.textContent = isMuted ? '🔇 MUTE' : '🔊 SND';
         audioBadge.style.color = isMuted ? '#ef4444' : '#22c55e';
       }
+    });
+
+    this.inspectBadge = bottomRight.querySelector('#inspect-badge') as HTMLElement;
+    if (this.inspectBadge) {
+      this.inspectBadge.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (this.onToggleInspection) {
+          this.onToggleInspection();
+        }
+      });
+    }
+
+    // 9. Multi-View CAD Engineering Inspection Overlay
+    this.inspectionOverlay = document.createElement('div');
+    this.inspectionOverlay.id = 'inspection-overlay';
+    this.inspectionOverlay.className = 'inspection-overlay';
+    this.inspectionOverlay.innerHTML = `
+      <div class="inspect-top-bar">
+        <div class="inspect-header-group">
+          <div class="inspect-badge-tag">🔍 CAD SPECIFICATION AUDIT</div>
+          <div class="inspect-view-title" id="inspect-active-view-title">FRONT ELEVATION [1]</div>
+          <div class="inspect-cad-subtitle" id="inspect-cad-subtitle">FIA APPENDIX J GROUP B HOMOLOGATION &bull; ISO 8855 COORDINATE MATRIX</div>
+          <div class="inspect-spec-card" id="inspect-spec-card">
+            <div class="inspect-spec-plate" id="inspect-spec-plate">PLATE 01: FRONT ELEVATION BLUEPRINT</div>
+            <div class="inspect-spec-grid" id="inspect-spec-grid"></div>
+            <div class="inspect-spec-notes" id="inspect-spec-notes"></div>
+          </div>
+        </div>
+        <div class="inspect-top-right-group">
+          <button class="inspect-toggle-hud-btn" id="inspect-toggle-hud-btn" title="Toggle CAD HUD Info [H]">👁 HIDE HUD [H]</button>
+          <button class="inspect-exit-btn" id="inspect-exit-btn">✕ EXIT DRIVE [ESC]</button>
+        </div>
+      </div>
+      <div class="inspect-bottom-bar">
+        <div class="inspect-toolbar">
+          <button class="inspect-btn" id="inspect-prev-btn">◀ PREV</button>
+          <button class="inspect-btn active" data-index="0" data-view="FRONT">1 FRONT</button>
+          <button class="inspect-btn" data-index="1" data-view="SIDE">2 SIDE</button>
+          <button class="inspect-btn" data-index="2" data-view="REAR">3 REAR</button>
+          <button class="inspect-btn" data-index="3" data-view="TOP">4 TOP</button>
+          <button class="inspect-btn" data-index="4" data-view="UNDERBODY">5 UNDERBODY</button>
+          <button class="inspect-btn" data-index="5" data-view="ISOMETRIC">6 ISOMETRIC</button>
+          <button class="inspect-btn" id="inspect-next-btn">NEXT ▶</button>
+        </div>
+        <div class="inspect-hint-bar">
+          <kbd>1-6</kbd> Select View &nbsp;|&nbsp; <kbd>C</kbd> Cycle View &nbsp;|&nbsp; <kbd>ESC</kbd> / <kbd>I</kbd> Exit Inspection
+        </div>
+      </div>
+    `;
+    this.container.appendChild(this.inspectionOverlay);
+
+    this.inspectViewTitleEl = this.inspectionOverlay.querySelector('#inspect-active-view-title') as HTMLElement;
+    this.inspectSpecPlateEl = this.inspectionOverlay.querySelector('#inspect-spec-plate') as HTMLElement;
+    this.inspectSpecGridEl = this.inspectionOverlay.querySelector('#inspect-spec-grid') as HTMLElement;
+    this.inspectSpecNotesEl = this.inspectionOverlay.querySelector('#inspect-spec-notes') as HTMLElement;
+    this.inspectButtons = Array.from(this.inspectionOverlay.querySelectorAll('.inspect-toolbar .inspect-btn[data-index]'));
+
+    const toggleHudBtn = this.inspectionOverlay.querySelector('#inspect-toggle-hud-btn') as HTMLElement;
+    const specCard = this.inspectionOverlay.querySelector('#inspect-spec-card') as HTMLElement;
+    if (toggleHudBtn && specCard) {
+      toggleHudBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isMin = specCard.classList.toggle('minimized');
+        toggleHudBtn.textContent = isMin ? '👁 SHOW HUD [H]' : '👁 HIDE HUD [H]';
+      });
+    }
+
+    const exitBtn = this.inspectionOverlay.querySelector('#inspect-exit-btn');
+    if (exitBtn) {
+      exitBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onExitInspection?.();
+      });
+    }
+
+    const prevBtn = this.inspectionOverlay.querySelector('#inspect-prev-btn');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onCycleInspectionPreset?.(false);
+      });
+    }
+
+    const nextBtn = this.inspectionOverlay.querySelector('#inspect-next-btn');
+    if (nextBtn) {
+      nextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.onCycleInspectionPreset?.(true);
+      });
+    }
+
+    this.inspectButtons.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-index') || '0', 10);
+        this.onSelectInspectionPreset?.(idx);
+      });
     });
   }
 
@@ -860,6 +1177,76 @@ export class TelemetryHUD {
     if (this.todBadge) {
       const icon = tod === 'NOON' ? '☀️' : tod === 'DUSK' ? '🌅' : '🌙';
       this.todBadge.textContent = `${icon} ${tod} [N]`;
+    }
+  }
+
+  public toggleInspectionHud(): boolean {
+    const specCard = this.inspectionOverlay?.querySelector('#inspect-spec-card') as HTMLElement;
+    const toggleHudBtn = this.inspectionOverlay?.querySelector('#inspect-toggle-hud-btn') as HTMLElement;
+    if (specCard) {
+      const isMin = specCard.classList.toggle('minimized');
+      if (toggleHudBtn) {
+        toggleHudBtn.textContent = isMin ? '👁 SHOW HUD [H]' : '👁 HIDE HUD [H]';
+      }
+      return !isMin;
+    }
+    return true;
+  }
+
+  public showInspectionMode(active: boolean): void {
+    this.isInspecting = active;
+    if (this.inspectionOverlay) {
+      this.inspectionOverlay.style.display = active ? 'flex' : 'none';
+    }
+    if (this.inspectBadge) {
+      this.inspectBadge.textContent = active ? '🔍 AUDIT [ESC]' : '🔍 INSPECT [I]';
+      this.inspectBadge.style.color = active ? '#38bdf8' : 'rgba(255,255,255,0.7)';
+      this.inspectBadge.style.background = active ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.06)';
+    }
+    const hudBottomLeft = this.container.querySelector('.hud-bottom-left') as HTMLElement;
+    if (hudBottomLeft) {
+      hudBottomLeft.style.display = active ? 'none' : 'block';
+    }
+    const speedoWrap = this.container.querySelector('.speedo-wrap') as HTMLElement;
+    if (speedoWrap) {
+      speedoWrap.style.display = active ? 'none' : 'block';
+    }
+    const controlsHelp = this.container.querySelector('.hud-controls-help') as HTMLElement;
+    if (controlsHelp) {
+      controlsHelp.style.display = active ? 'none' : 'block';
+    }
+    const topBanner = this.container.querySelector('.hud-top-banner') as HTMLElement;
+    if (topBanner) {
+      topBanner.style.display = active ? 'none' : 'flex';
+    }
+  }
+
+  public updateInspectionView(preset: InspectionPresetConfig): void {
+    if (!this.inspectionOverlay) return;
+    if (this.inspectViewTitleEl) {
+      this.inspectViewTitleEl.textContent = preset.title;
+    }
+    if (this.inspectSpecPlateEl) {
+      this.inspectSpecPlateEl.textContent = `${preset.plate} (${preset.cadChapter})`;
+    }
+    if (this.inspectSpecGridEl) {
+      this.inspectSpecGridEl.innerHTML = preset.specs
+        .map(s => `<div class="inspect-spec-item"><span class="inspect-spec-label">${s.label}</span><span class="inspect-spec-val">${s.value}</span></div>`)
+        .join('');
+    }
+    if (this.inspectSpecNotesEl) {
+      this.inspectSpecNotesEl.textContent = preset.notes;
+    }
+    this.inspectButtons.forEach(btn => {
+      const viewName = btn.getAttribute('data-view');
+      if (viewName === preset.view) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+    if (this.inspectBadge) {
+      this.inspectBadge.textContent = this.isInspecting ? `🔍 ${preset.view} [I]` : '🔍 INSPECT [I]';
     }
   }
 }

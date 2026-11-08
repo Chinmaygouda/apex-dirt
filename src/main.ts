@@ -19,6 +19,7 @@ import { CoDriverSystem } from './gameplay/CoDriverSystem';
 import { StageManager } from './gameplay/StageManager';
 import { ProvingGroundWorld } from './world/ProvingGroundWorld';
 import { ReplayVisualizer } from './replay/ReplayVisualizer';
+import { VehicleInspectionController } from './core/VehicleInspectionController';
 
 async function initGame() {
   (window as any).THREE = THREE;
@@ -126,6 +127,16 @@ async function initGame() {
     return RALLY_LIVERIES[liv].name;
   };
 
+  // 9b. Multi-View Vehicle Inspection Controller (6 CAD Primary Viewpoints & Dedicated Studio Lighting)
+  const inspectionController = new VehicleInspectionController(scene);
+  inspectionController.setGroundObject(provingGround.group);
+  hud.onToggleInspection = () => inspectionController.toggle();
+  hud.onSelectInspectionPreset = (idx) => inspectionController.setPresetByIndex(idx);
+  hud.onCycleInspectionPreset = (fwd) => inspectionController.cyclePreset(fwd);
+  hud.onExitInspection = () => inspectionController.exit();
+  inspectionController.onActiveChanged = (active) => hud.showInspectionMode(active);
+  inspectionController.onViewChanged = (preset) => hud.updateInspectionView(preset);
+
   let demoMode: 'skidpad' | 'handbrake' | 'testA' | null = null;
   let demoTimer = 0;
   let testAShotTaken = false;
@@ -223,6 +234,9 @@ async function initGame() {
   (window as any).vehicle = vehicle;
   (window as any).vehicleEffects = vehicleEffects;
   (window as any).collisionDispatcher = collisionDispatcher;
+  (window as any).inspectionController = inspectionController;
+  (window as any).setInspectionView = (view: any) => inspectionController.setPreset(view, true);
+  (window as any).toggleInspection = (force?: boolean) => inspectionController.toggle(force);
   (window as any).scene = scene;
   (window as any).physics = physics;
 
@@ -287,12 +301,47 @@ async function initGame() {
     // Get current inputs
     let inputs = inputManager.update();
 
-    if (inputs.cameraCycle) {
-      const mode = camera.cycleMode();
-      vehicle.setCockpitViewMode(mode === 'COCKPIT_FPV');
-      cockpit.setCockpitViewMode(mode === 'COCKPIT_FPV');
-      hud.setCameraMode?.(mode);
+    if (inputs.inspectToggle) {
+      inspectionController.toggle();
     }
+    if (inputs.inspectExit && inspectionController.isActive) {
+      inspectionController.exit();
+    }
+
+    if (inspectionController.isActive) {
+      if (inputs.inspectHudToggle) {
+        hud.toggleInspectionHud();
+      }
+      if (inputs.cameraCycle) {
+        inspectionController.cyclePreset(true);
+      }
+      if (typeof inputs.inspectDigit === 'number' && inputs.inspectDigit >= 1 && inputs.inspectDigit <= 6) {
+        inspectionController.setPresetByIndex(inputs.inspectDigit - 1);
+      }
+      inputs = {
+        throttle: 0,
+        brake: 1.0,
+        steer: 0,
+        handbrake: true,
+        reset: false,
+        drivetrainToggle: false,
+        demoSkidpad: false,
+        demoHandbrake: false,
+      };
+    } else {
+      if (inputs.cameraCycle) {
+        const mode = camera.cycleMode();
+        vehicle.setCockpitViewMode(mode === 'COCKPIT_FPV');
+        cockpit.setCockpitViewMode(mode === 'COCKPIT_FPV');
+        hud.setCameraMode?.(mode);
+      }
+      if (inputs.demoSkidpad) {
+        runSkidpadTest();
+      } else if (inputs.demoHandbrake) {
+        runHandbrakeTest();
+      }
+    }
+
     if (inputs.headlightToggle) {
       const on = headlightController.toggle();
       hud.setHeadlights?.(on);
@@ -304,12 +353,6 @@ async function initGame() {
     if (inputs.dayNightToggle) {
       const preset = dayNightCycle.togglePreset();
       hud.setTimeOfDay?.(preset);
-    }
-
-    if (inputs.demoSkidpad) {
-      runSkidpadTest();
-    } else if (inputs.demoHandbrake) {
-      runHandbrakeTest();
     }
     if (inputs.throttle > 0 || inputs.brake > 0 || Math.abs(inputs.steer) > 0 || inputs.handbrake) {
       demoMode = null;
@@ -393,13 +436,21 @@ async function initGame() {
     damageController.update(frameDt);
 
     const telemetry = vehicle.getTelemetry(inputs);
-    const isCockpit = camera.currentMode === 'COCKPIT_FPV';
-    vehicle.setCockpitViewMode(isCockpit);
-    cockpit.setCockpitViewMode(isCockpit);
-    cockpit.update(frameDt, telemetry, inputs.steer);
-    dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
-    if (!(window as any).__debugFreeCam) {
-      camera.update(vehicle, frameDt, inputs.steer);
+    if (inspectionController.isActive) {
+      vehicle.setCockpitViewMode(false);
+      cockpit.setCockpitViewMode(false);
+      cockpit.update(frameDt, telemetry, 0);
+      dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
+      inspectionController.update(camera.camera, vehicle, frameDt);
+    } else {
+      const isCockpit = camera.currentMode === 'COCKPIT_FPV';
+      vehicle.setCockpitViewMode(isCockpit);
+      cockpit.setCockpitViewMode(isCockpit);
+      cockpit.update(frameDt, telemetry, inputs.steer);
+      dayNightCycle.update(frameDt, vehicle.chassisMesh ? vehicle.chassisMesh.position : undefined);
+      if (!(window as any).__debugFreeCam) {
+        camera.update(vehicle, frameDt, inputs.steer);
+      }
     }
 
     // Update Vehicle Effects (Phase 2: exhaust, tyre smoke, tracks, sun glare)
