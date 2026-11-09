@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APEX RALLY – 3D Environment & World Engine</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body, html {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #111;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+    #canvas-container {
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+    /* HUD Overlay */
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+      color: #fff;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+    }
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .brand-title {
+      font-size: 26px;
+      font-weight: 900;
+      letter-spacing: 2px;
+      color: #ff5500;
+      text-transform: uppercase;
+    }
+    .brand-sub {
+      font-size: 13px;
+      color: #e8a87c;
+      letter-spacing: 1px;
+    }
+    .timing-card {
+      background: rgba(18, 20, 24, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 12px 20px;
+      text-align: right;
+    }
+    .timer-val {
+      font-family: monospace;
+      font-size: 32px;
+      font-weight: bold;
+      color: #00ffcc;
+    }
+    .sector-info {
+      font-size: 13px;
+      color: #bbb;
+      margin-top: 4px;
+    }
+    /* Co-driver Pace Note Banner */
+    #pacenote-banner {
+      align-self: center;
+      background: rgba(238, 85, 0, 0.85);
+      border: 2px solid #fff;
+      border-radius: 6px;
+      padding: 10px 28px;
+      font-size: 20px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+      transition: opacity 0.3s ease;
+      opacity: 0;
+    }
+    #pacenote-banner.active {
+      opacity: 1;
+    }
+    /* Bottom Dashboard */
+    .hud-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    .telemetry-card {
+      background: rgba(18, 20, 24, 0.75);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .telemetry-card span {
+      color: #00ffcc;
+      font-weight: bold;
+    }
+    .speedo-card {
+      background: rgba(18, 20, 24, 0.85);
+      backdrop-filter: blur(8px);
+      border: 2px solid rgba(255, 85, 0, 0.6);
+      border-radius: 12px;
+      padding: 16px 28px;
+      text-align: center;
+    }
+    .speed-number {
+      font-family: monospace;
+      font-size: 56px;
+      font-weight: 900;
+      color: #fff;
+      line-height: 1;
+    }
+    .speed-unit {
+      font-size: 14px;
+      font-weight: bold;
+      color: #ff5500;
+      letter-spacing: 1px;
+    }
+    .rpm-bar-container {
+      width: 140px;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      margin: 8px auto 0;
+      overflow: hidden;
+    }
+    #rpm-bar {
+      width: 20%;
+      height: 100%;
+      background: linear-gradient(90deg, #00ffcc, #ffcc00, #ff2200);
+      transition: width 0.05s ease;
+    }
+    /* Interactive Controls Helper */
+    .controls-hint {
+      background: rgba(0,0,0,0.6);
+      padding: 8px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div id="hud">
+    <div class="hud-header">
+      <div>
+        <div class="brand-title">APEX RALLY</div>
+        <div class="brand-sub">Mediterranean Hillside Stage • Golden Hour (17:45)</div>
+      </div>
+      <div class="timing-card">
+        <div id="stage-timer" class="timer-val">00:00.00</div>
+        <div id="sector-display" class="sector-info">SECTOR 1 • DELTA +0.00s</div>
+        <div id="joker-display" class="sector-info" style="color: #ffaa00; font-weight: bold;">JOKER: N/A</div>
+      </div>
+    </div>
+
+    <div id="pacenote-banner">READY... GO!</div>
+
+    <div class="hud-bottom">
+      <div class="telemetry-card">
+        <div>Surface: <span id="tel-surface">Packed Coarse Gravel</span></div>
+        <div>Friction (μ): <span id="tel-friction">0.72</span></div>
+        <div>Lateral Scrub: <span id="tel-scrub">0.0 m/s</span></div>
+        <div>Camera Mode: <span id="tel-cam">Chase Cam</span></div>
+      </div>
+
+      <div class="controls-hint">
+        <b>[WASD]</b> Drive • <b>[SPACE]</b> Drift • <b>[1/2/3]</b> Shots • <b>[C]</b> Cam • <b>[T]</b> Track • <b>[V]</b> Voice • <b>[M]</b> Mute
+      </div>
+
+      <div class="speedo-card">
+        <div id="speed-display" class="speed-number">0</div>
+        <div class="speed-unit">KM/H</div>
+        <div class="rpm-bar-container">
+          <div id="rpm-bar"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
+
