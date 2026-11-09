@@ -89,6 +89,7 @@ async function initGame() {
   // 7d. Procedural Rally Audio Engine
   const { RallyAudioEngine } = await import('./audio/RallyAudioEngine');
   const audioEngine = new RallyAudioEngine();
+  audioEngine.setMuted(true); // Always mute car sound on launch per user requirement
   vehicleEffects.onExhaustPop = () => audioEngine.triggerExhaustPop();
 
   // 8. Multi-Camera Manager (Chase, Cockpit FPV, Hood)

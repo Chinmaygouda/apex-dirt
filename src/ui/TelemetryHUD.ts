@@ -775,7 +775,7 @@ export class TelemetryHUD {
         <div class="hud-badge" id="handbrake-badge">HB</div>
         <div class="hud-badge" id="clutch-badge">CLUTCH</div>
         <div class="hud-badge" id="drivetrain-badge">RWD</div>
-        <div class="hud-badge" id="audio-badge" style="cursor: pointer; pointer-events: auto; color: #22c55e;">🔊 SND</div>
+        <div class="hud-badge" id="audio-badge" style="cursor: pointer; pointer-events: auto; color: #ef4444;">🔇 MUTE</div>
       </div>
     `;
     this.container.appendChild(bottomRight);

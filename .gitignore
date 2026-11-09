@@ -31,6 +31,8 @@ composite_*.png
 Thumbs.db
 .agents/
 scratch/
+__pycache__/
+*.pyc
 *.zip
 *.patch
 

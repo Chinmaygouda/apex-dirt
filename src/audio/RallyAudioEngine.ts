@@ -616,6 +616,13 @@ export class RallyAudioEngine {
     return this.isMuted;
   }
 
+  public setMuted(muted: boolean): void {
+    this.isMuted = muted;
+    if (this.masterGain && this.ctx) {
+      this.masterGain.gain.setTargetAtTime(this.isMuted ? 0 : 0.85, this.ctx.currentTime, 0.02);
+    }
+  }
+
   public getMuted(): boolean {
     return this.isMuted;
   }
