@@ -3405,13 +3405,13 @@ export class CustomRallyVehicle {
 
     // Lower rear diffuser tray
     const rearDiffuser = new THREE.Mesh(new THREE.BoxGeometry(1.52, 0.04, 0.34), trimMat);
-    rearDiffuser.position.set(0, -0.03, -1.98);
+    rearDiffuser.position.set(0, -0.22, -1.98);
     this.chassisMainGroup.add(rearDiffuser);
 
     // Vertical diffuser strakes (4 symmetric strakes across rear valance)
     for (const dx of [-0.48, -0.16, 0.16, 0.48]) {
       const strake = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.10, 0.28), trimMat);
-      strake.position.set(dx, -0.06, -1.98);
+      strake.position.set(dx, -0.24, -1.98);
       this.chassisMainGroup.add(strake);
     }
 
@@ -3423,7 +3423,7 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
     const rainLight = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.06, 0.03), rainLightMat);
-    rainLight.position.set(0, -0.04, -2.15);
+    rainLight.position.set(0, -0.16, -2.15);
     this.chassisMainGroup.add(rainLight);
 
     // =========================================================================
@@ -3437,13 +3437,13 @@ export class CustomRallyVehicle {
       flatShading: true,
     });
     const undertray = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.025, 1.70), undertrayMat);
-    undertray.position.set(0, -0.02, -0.05);
+    undertray.position.set(0, -0.24, -0.05);
     this.chassisMainGroup.add(undertray);
 
     // Recessed central propshaft tunnel trough
     const tunnelTroughMat = new THREE.MeshStandardMaterial({ color: 0x09090b, roughness: 0.9 });
     const propshaftTunnel = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 1.68), tunnelTroughMat);
-    propshaftTunnel.position.set(0, -0.005, -0.05);
+    propshaftTunnel.position.set(0, -0.225, -0.05);
     this.chassisMainGroup.add(propshaftTunnel);
 
     // Component C: Tubular 4130 Chrome-Moly Rear Differential Cradle & Rock Deflector (z = -0.90m to -1.95m)
@@ -3457,24 +3457,24 @@ export class CustomRallyVehicle {
     for (const cx of [-0.38, 0.38]) {
       const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 1.05, 8), cradleMat);
       rail.rotateX(Math.PI / 2);
-      rail.position.set(cx, -0.03, -1.42);
+      rail.position.set(cx, -0.20, -1.42);
       this.chassisMainGroup.add(rail);
     }
     // Transverse cradle cross-members
     for (const cz of [-0.95, -1.40, -1.88]) {
       const cross = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.76, 8), cradleMat);
       cross.rotateZ(Math.PI / 2);
-      cross.position.set(0, -0.03, cz);
+      cross.position.set(0, -0.20, cz);
       this.chassisMainGroup.add(cross);
     }
     // Salisbury mechanical LSD differential pumpkin casing with cooling ribs
     const diffMat = new THREE.MeshStandardMaterial({ color: 0x27272a, roughness: 0.5, metalness: 0.8 });
     const diffPumpkin = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.22, 0.32), diffMat);
-    diffPumpkin.position.set(0, 0.06, -1.35);
+    diffPumpkin.position.set(0, -0.08, -1.35);
     this.chassisMainGroup.add(diffPumpkin);
     // Aluminum lower rock deflector shield plate
     const deflectorPlate = new THREE.Mesh(new THREE.BoxGeometry(0.80, 0.02, 0.85), bashPlateMat);
-    deflectorPlate.position.set(0, -0.04, -1.42);
+    deflectorPlate.position.set(0, -0.22, -1.42);
     this.chassisMainGroup.add(deflectorPlate);
 
     // =========================================================================
@@ -3485,7 +3485,7 @@ export class CustomRallyVehicle {
     const ribMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.5, metalness: 0.6, flatShading: true });
     for (const rx of [-0.40, -0.20, 0, 0.20, 0.40]) {
       const bashRib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.012, 0.52), ribMat);
-      bashRib.position.set(rx, -0.085, 1.82);
+      bashRib.position.set(rx, -0.245, 1.82);
       bashRib.rotation.x = 0.26; // Match bash plate slope
       this.frontBumperGroup.add(bashRib);
     }
@@ -3494,7 +3494,7 @@ export class CustomRallyVehicle {
     for (const bx of [-0.46, 0.46]) {
       for (const bz of [1.56, 2.08]) {
         const bolt = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.015, 6), boltMat);
-        bolt.position.set(bx, -0.07, bz);
+        bolt.position.set(bx, -0.23, bz);
         this.frontBumperGroup.add(bolt);
       }
     }
@@ -3502,7 +3502,7 @@ export class CustomRallyVehicle {
     // Component B additions: 3 flat aero diffusion ribs on undertray bottom
     for (const rx of [-0.35, 0, 0.35]) {
       const aeroRib = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.015, 1.60), undertrayMat);
-      aeroRib.position.set(rx, -0.038, -0.05);
+      aeroRib.position.set(rx, -0.258, -0.05);
       this.chassisMainGroup.add(aeroRib);
     }
     // Side skirt joining brackets (forward + aft)
@@ -3510,7 +3510,7 @@ export class CustomRallyVehicle {
     for (const sx of [-0.56, 0.56]) {
       for (const bz of [0.76, -0.86]) {
         const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.025, 0.06), bracketMat);
-        bracket.position.set(sx, -0.03, bz);
+        bracket.position.set(sx, -0.22, bz);
         this.chassisMainGroup.add(bracket);
       }
     }
@@ -3519,13 +3519,13 @@ export class CustomRallyVehicle {
     const diagMat = new THREE.MeshStandardMaterial({ color: 0x52525b, roughness: 0.4, metalness: 0.75, flatShading: true });
     // Forward diagonal brace (left-front to right-rear)
     const diagBrace1 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.52, 8), diagMat);
-    diagBrace1.position.set(0, -0.03, -1.14);
+    diagBrace1.position.set(0, -0.20, -1.14);
     diagBrace1.rotation.z = Math.PI / 2;
     diagBrace1.rotation.x = 0.4;
     this.chassisMainGroup.add(diagBrace1);
     // Rearward diagonal brace (right-front to left-rear)
     const diagBrace2 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.52, 8), diagMat);
-    diagBrace2.position.set(0, -0.03, -1.65);
+    diagBrace2.position.set(0, -0.20, -1.65);
     diagBrace2.rotation.z = Math.PI / 2;
     diagBrace2.rotation.x = -0.4;
     this.chassisMainGroup.add(diagBrace2);
@@ -3533,14 +3533,14 @@ export class CustomRallyVehicle {
     // Diff breather stub (pointing up from diffPumpkin)
     const breatherMat = new THREE.MeshStandardMaterial({ color: 0x3f3f46, roughness: 0.5, metalness: 0.7, flatShading: true });
     const breatherStub = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.06, 8), breatherMat);
-    breatherStub.position.set(0.08, 0.20, -1.35);
+    breatherStub.position.set(0.08, 0.06, -1.35);
     this.chassisMainGroup.add(breatherStub);
 
     // Halfshaft stub axles (horizontal, x = ±0.14 from diff center)
     const halfshaftMat = new THREE.MeshStandardMaterial({ color: 0x71717a, roughness: 0.3, metalness: 0.85, flatShading: true });
     for (const hx of [-0.14, 0.14]) {
       const halfshaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.30, 8), halfshaftMat);
-      halfshaft.position.set(hx * 2.5, 0.06, -1.35);
+      halfshaft.position.set(hx * 2.5, -0.08, -1.35);
       halfshaft.rotation.z = Math.PI / 2;
       this.chassisMainGroup.add(halfshaft);
     }
@@ -3553,7 +3553,7 @@ export class CustomRallyVehicle {
 
     // Stainless steel heat shield above dual exhaust outlets on right side (CAD §3.2)
     const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.12), bashPlateMat);
-    heatShield.position.set(0.34, 0.05, -2.132);
+    heatShield.position.set(0.34, -0.10, -2.132);
     heatShield.rotation.y = Math.PI;
     this.chassisMainGroup.add(heatShield);
 
@@ -3564,7 +3564,7 @@ export class CustomRallyVehicle {
         exhaustMat
       );
       exhaustPipe.rotateX(Math.PI / 2);
-      exhaustPipe.position.set(ex, -0.04, -2.10);
+      exhaustPipe.position.set(ex, -0.18, -2.10);
       this.chassisMainGroup.add(exhaustPipe);
 
       // Dark soot interior bore
@@ -3573,7 +3573,7 @@ export class CustomRallyVehicle {
         exhaustBoreMat
       );
       bore.rotateX(Math.PI / 2);
-      bore.position.set(ex, -0.04, -2.205);
+      bore.position.set(ex, -0.18, -2.205);
       this.chassisMainGroup.add(bore);
 
       // Burnt titanium blue scorch tip ring
@@ -3584,7 +3584,7 @@ export class CustomRallyVehicle {
       });
       const tiRing = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.03, 16), tiMat);
       tiRing.rotateX(Math.PI / 2);
-      tiRing.position.set(ex, -0.04, -2.21);
+      tiRing.position.set(ex, -0.18, -2.21);
       this.chassisMainGroup.add(tiRing);
     }
 
@@ -3595,7 +3595,7 @@ export class CustomRallyVehicle {
     // Rear tow recovery hook (right side, red anodized aluminum)
     const towHookMat = new THREE.MeshStandardMaterial({ color: 0xcc0000, roughness: 0.3, metalness: 0.7, flatShading: true });
     const towHook = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.012, 8, 16), towHookMat);
-    towHook.position.set(0.52, 0.04, -2.18);
+    towHook.position.set(0.52, -0.16, -2.18);
     towHook.rotation.x = Math.PI / 2;
     this.chassisMainGroup.add(towHook);
 
@@ -3603,7 +3603,7 @@ export class CustomRallyVehicle {
     const stepPlateMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.8, metalness: 0.3, flatShading: true });
     for (const sx of [-1, 1]) {
       const stepPlate = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.03, 0.60), stepPlateMat);
-      stepPlate.position.set(sx * 0.88, 0.0, -0.1);
+      stepPlate.position.set(sx * 0.88, -0.24, -0.1);
       this.chassisMainGroup.add(stepPlate);
     }
 
