@@ -84,8 +84,8 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'TOP PLAN [4]',
     plate: 'Plate 05: Top Plan View Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 5',
-    offset: new THREE.Vector3(0.0, 8.20, -0.15),
-    targetOffset: new THREE.Vector3(0.0, 0.30, -0.15),
+    offset: new THREE.Vector3(0.0, 8.20, -0.35),
+    targetOffset: new THREE.Vector3(0.0, 0.30, -0.35),
     upVector: new THREE.Vector3(0.0, 0.0, 1.0), // +Z points UP on screen
     fov: 45,
     specs: [

@@ -1558,23 +1558,23 @@ export class CustomRallyVehicle {
       if (z >= 0.95 && z <= 1.75) {
         // Front wheel well recess: indent inner tub to |X| <= 0.48m across entire wheelhouse span.
         // Guarantees >= 35.8mm lateral clearance to tire inboard edge (|X| >= 0.516m at full +/-32° steer)
-        // and >= 59.3mm vertical clearance to tire top at 120mm bump (yWaist = 0.22m > yTire = 0.1607m).
+        // and >= 79.3mm vertical clearance to tire top at 120mm bump (yWaist = 0.24m > yTire = 0.1607m).
         xSill = 0.48;
         xWaist = 0.48;
         xBelt = 0.85;
         yFloor = 0.00;
         ySill = 0.02;
-        yWaist = 0.22;
+        yWaist = 0.24;
         yBelt = 0.42;
       } else if (z <= -0.95 && z >= -1.75) {
         // Rear wheel well recess: indent inner tub to |X| <= 0.62m across entire rear wheelhouse span.
-        // Guarantees >= 60.0mm lateral clearance to tire inboard edge (|X| = 0.68m) and vertical clearance.
+        // Guarantees >= 60.0mm lateral clearance to tire inboard edge (|X| = 0.68m) and vertical clearance (yWaist = 0.24m).
         xSill = 0.62;
         xWaist = 0.62;
         xBelt = 0.86;
         yFloor = 0.00;
         ySill = 0.02;
-        yWaist = 0.22;
+        yWaist = 0.24;
         yBelt = 0.48;
       } else if (z > -0.75 && z < 0.75) {
         // Cabin door section with coke-bottle tuck
