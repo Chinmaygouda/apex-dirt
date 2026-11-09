@@ -29,6 +29,10 @@ composite_*.png
 *.log
 .DS_Store
 Thumbs.db
+.agents/
+scratch/
+*.zip
+*.patch
 
 # Scratch extraction and search scripts
 extract_and_composite.ts

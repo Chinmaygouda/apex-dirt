@@ -399,10 +399,16 @@ async function runBrowserPlaytest() {
       throw new Error('window.inspectionController is not defined on global window');
     }
 
-    // Restore vibrant APEX_RED livery and reset stage for crystal-clear CAD inspection
+    // Restore vibrant APEX_RED livery and reset stage and damage for crystal-clear CAD inspection
     await client.evaluate(`
+      if (window.damageController && typeof window.damageController.reset === 'function') {
+        window.damageController.reset();
+      }
       if (window.vehicle) {
         window.vehicle.setLivery('APEX_RED');
+        if (typeof window.vehicle.resetPosition === 'function') {
+          window.vehicle.resetPosition();
+        }
       }
       if (window.hud) {
         window.hud.setLivery('Apex Classic Red');
@@ -410,8 +416,11 @@ async function runBrowserPlaytest() {
       if (window.stageManager) {
         window.stageManager.restart();
       }
+      if (window.provingGround && typeof window.provingGround.restart === 'function') {
+        window.provingGround.restart();
+      }
     `);
-    await sleep(400);
+    await sleep(800);
 
     // Toggle into inspection mode via Key 'I'
     await client.dispatchKeyEvent('keyDown', 'i', 'KeyI');
@@ -425,12 +434,40 @@ async function runBrowserPlaytest() {
     }
     console.log('  [PASS] Successfully entered CAD Inspection Mode via Key "I"');
 
-    const artifactDir = 'C:\\Users\\Chinmaygouda\\.gemini\\antigravity\\brain\\dc1c784f-97c7-447f-a7ac-d2f7624b91de';
+    // Minimize HUD overlay and hide spec card so car is 100% visible without HUD card obstruction
+    await client.evaluate(`
+      (() => {
+        if (window.hud && typeof window.hud.toggleInspectionHud === 'function') {
+          window.hud.toggleInspectionHud();
+        }
+        const card = document.querySelector('#inspect-spec-card');
+        if (card) {
+          card.classList.add('minimized');
+          card.style.display = 'none';
+        }
+        const titleBadge = document.querySelector('#inspect-title-badge');
+        if (titleBadge) {
+          titleBadge.style.display = 'none';
+        }
+        const hintBadge = document.querySelector('#inspect-hint-badge');
+        if (hintBadge) {
+          hintBadge.style.display = 'none';
+        }
+      })()
+    `);
+    await sleep(250);
+
+    const artifactDirs = [
+      'C:\\Users\\Chinmaygouda\\.gemini\\antigravity\\brain\\6a2adfff-1052-42f6-9c82-f0d76e0f75e3',
+      'C:\\Users\\Chinmaygouda\\.gemini\\antigravity\\brain\\dc1c784f-97c7-447f-a7ac-d2f7624b91de',
+    ];
     const writeShot = (name: string, data: string) => {
       const buf = Buffer.from(data, 'base64');
       fs.writeFileSync(name, buf);
-      if (fs.existsSync(artifactDir)) {
-        fs.writeFileSync(path.join(artifactDir, name), buf);
+      for (const dir of artifactDirs) {
+        if (fs.existsSync(dir)) {
+          fs.writeFileSync(path.join(dir, name), buf);
+        }
       }
     };
 
@@ -438,7 +475,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '1', 'Digit1');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '1', 'Digit1');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('FRONT')`);
+    await sleep(350);
     const view1 = await client.evaluate(`window.inspectionController.activeView`);
     if (view1 !== 'FRONT') throw new Error(`Expected FRONT view, got ${view1}`);
     const shotInspectFront = await client.send('Page.captureScreenshot', { format: 'png' });
@@ -449,7 +487,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '2', 'Digit2');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '2', 'Digit2');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('SIDE')`);
+    await sleep(350);
     const view2 = await client.evaluate(`window.inspectionController.activeView`);
     if (view2 !== 'SIDE') throw new Error(`Expected SIDE view, got ${view2}`);
     const shotInspectSide = await client.send('Page.captureScreenshot', { format: 'png' });
@@ -460,7 +499,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '3', 'Digit3');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '3', 'Digit3');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('REAR')`);
+    await sleep(350);
     const view3 = await client.evaluate(`window.inspectionController.activeView`);
     if (view3 !== 'REAR') throw new Error(`Expected REAR view, got ${view3}`);
     const shotInspectRear = await client.send('Page.captureScreenshot', { format: 'png' });
@@ -471,7 +511,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '4', 'Digit4');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '4', 'Digit4');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('TOP')`);
+    await sleep(350);
     const view4 = await client.evaluate(`window.inspectionController.activeView`);
     if (view4 !== 'TOP') throw new Error(`Expected TOP view, got ${view4}`);
     const shotInspectTop = await client.send('Page.captureScreenshot', { format: 'png' });
@@ -482,7 +523,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '5', 'Digit5');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '5', 'Digit5');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('UNDERBODY')`);
+    await sleep(350);
     const view5 = await client.evaluate(`window.inspectionController.activeView`);
     if (view5 !== 'UNDERBODY') throw new Error(`Expected UNDERBODY view, got ${view5}`);
     const groundHidden = await client.evaluate(`window.provingGround && !window.provingGround.group.visible`);
@@ -495,7 +537,8 @@ async function runBrowserPlaytest() {
     await client.dispatchKeyEvent('keyDown', '6', 'Digit6');
     await sleep(50);
     await client.dispatchKeyEvent('keyUp', '6', 'Digit6');
-    await sleep(300);
+    await client.evaluate(`window.setInspectionView && window.setInspectionView('ISOMETRIC')`);
+    await sleep(350);
     const view6 = await client.evaluate(`window.inspectionController.activeView`);
     if (view6 !== 'ISOMETRIC') throw new Error(`Expected ISOMETRIC view, got ${view6}`);
     const groundRestored = await client.evaluate(`window.provingGround && window.provingGround.group.visible`);

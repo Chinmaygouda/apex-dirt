@@ -518,26 +518,21 @@ export class TelemetryHUD {
         max-width: 480px;
         background: rgba(15, 23, 42, 0.88);
         border: 1px solid rgba(56, 189, 248, 0.3);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
         border-radius: 12px;
         padding: 16px 20px;
         backdrop-filter: blur(8px);
         margin-top: 10px;
         pointer-events: auto;
-        transition: opacity 0.2s ease, transform 0.2s ease;
-      }
-      .inspect-spec-card.minimized {
-        opacity: 0;
-        pointer-events: none;
-        transform: translateY(-8px);
-      }
-        box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
-        border-radius: 12px;
-        padding: 16px 20px;
         display: flex;
         flex-direction: column;
         gap: 10px;
-        margin-top: 10px;
+        transition: opacity 0.2s ease, transform 0.2s ease;
+      }
+      .inspect-spec-card.minimized {
+        display: none !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
       }
       .inspect-spec-plate {
         font-size: 12px;

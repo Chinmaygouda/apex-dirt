@@ -18,6 +18,7 @@ export class VehicleDamageController {
   private isRearWingDetached = false;
 
   private debrisList: DebrisPart[] = [];
+  private originalVertexPositions = new Map<THREE.BufferGeometry, Float32Array>();
   public onDamage?: (severity: 'minor' | 'medium' | 'severe', impulse: number) => void;
   public vehicleEffects?: VehicleEffects;
 
@@ -152,6 +153,10 @@ export class VehicleDamageController {
 
           const posAttr = geom.attributes.position;
           let changed = false;
+
+          if (!this.originalVertexPositions.has(geom)) {
+            this.originalVertexPositions.set(geom, new Float32Array(posAttr.array as Float32Array));
+          }
 
           for (let i = 0; i < posAttr.count; i++) {
             const vx = posAttr.getX(i);
@@ -315,13 +320,47 @@ export class VehicleDamageController {
   }
 
   public reset(): void {
-    // Note: Re-attaching detached parts can be done on full vehicle reset
+    // 1. Remove dynamic debris bodies from physics world and scene
     for (const debris of this.debrisList) {
       this.physics.world.removeCollider(debris.collider, false);
       this.physics.world.removeRigidBody(debris.body);
       this.scene.remove(debris.mesh);
     }
     this.debrisList = [];
+
+    // 2. Re-attach detached sub-mesh groups back to vehicle carGroup hierarchy
+    if (this.vehicle && this.vehicle.carGroup) {
+      if (this.isFrontBumperDetached && this.vehicle.frontBumperGroup) {
+        this.vehicle.frontBumperGroup.position.set(0, 0, 0);
+        this.vehicle.frontBumperGroup.quaternion.identity();
+        this.vehicle.frontBumperGroup.scale.set(1, 1, 1);
+        this.vehicle.carGroup.add(this.vehicle.frontBumperGroup);
+      }
+      if (this.isHoodDetached && this.vehicle.hoodGroup) {
+        this.vehicle.hoodGroup.position.set(0, 0, 0);
+        this.vehicle.hoodGroup.quaternion.identity();
+        this.vehicle.hoodGroup.scale.set(1, 1, 1);
+        this.vehicle.carGroup.add(this.vehicle.hoodGroup);
+      }
+      if (this.isRearWingDetached && this.vehicle.rearWingGroup) {
+        this.vehicle.rearWingGroup.position.set(0, 0, 0);
+        this.vehicle.rearWingGroup.quaternion.identity();
+        this.vehicle.rearWingGroup.scale.set(1, 1, 1);
+        this.vehicle.carGroup.add(this.vehicle.rearWingGroup);
+      }
+    }
+
+    // 3. Restore all deformed vertices back to their original coordinates
+    for (const [geom, origArray] of this.originalVertexPositions.entries()) {
+      const posAttr = geom.attributes.position as THREE.BufferAttribute;
+      if (posAttr) {
+        (posAttr.array as Float32Array).set(origArray);
+        posAttr.needsUpdate = true;
+        geom.computeVertexNormals();
+      }
+    }
+    this.originalVertexPositions.clear();
+
     this.isFrontBumperDetached = false;
     this.isHoodDetached = false;
     this.isRearWingDetached = false;

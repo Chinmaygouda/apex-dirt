@@ -1524,16 +1524,1344 @@ export class CustomRallyVehicle {
     }
   }
 
+  // =========================================================================
+  // CAD PROCEDURAL RE-SCULPTED MESH GENERATORS (FIA APX-SPEC-FINAL-001)
+  // =========================================================================
+
+  private createSculptedLowerBody(bodyMat: THREE.Material): THREE.Mesh {
+    const zStations = [
+      -1.95, -1.82, -1.65, -1.45, -1.35, -1.25, -1.05, -0.75,
+      -0.50, -0.25,  0.00,  0.25,  0.50,  0.75,  1.05,  1.25,
+       1.35,  1.45,  1.65,  1.82,  1.95
+    ];
+
+    interface StationProfile {
+      z: number;
+      xSill: number;
+      xWaist: number;
+      xBelt: number;
+      yFloor: number;
+      ySill: number;
+      yWaist: number;
+      yBelt: number;
+    }
+
+    const profiles: StationProfile[] = zStations.map(z => {
+      let xSill = 0.85;
+      let xWaist = 0.86;
+      let xBelt = 0.85;
+      let yFloor = 0.02;
+      let ySill = 0.04;
+      let yWaist = 0.22;
+      let yBelt = 0.44;
+
+      if (z >= 0.95 && z <= 1.75) {
+        // Front wheel well recess: indent inner tub to |X| <= 0.48m across entire wheelhouse span.
+        // Guarantees >= 35.8mm lateral clearance to tire inboard edge (|X| >= 0.516m at full +/-32° steer)
+        // and >= 59.3mm vertical clearance to tire top at 120mm bump (yWaist = 0.22m > yTire = 0.1607m).
+        xSill = 0.48;
+        xWaist = 0.48;
+        xBelt = 0.85;
+        yFloor = 0.00;
+        ySill = 0.02;
+        yWaist = 0.22;
+        yBelt = 0.42;
+      } else if (z <= -0.95 && z >= -1.75) {
+        // Rear wheel well recess: indent inner tub to |X| <= 0.62m across entire rear wheelhouse span.
+        // Guarantees >= 60.0mm lateral clearance to tire inboard edge (|X| = 0.68m) and vertical clearance.
+        xSill = 0.62;
+        xWaist = 0.62;
+        xBelt = 0.86;
+        yFloor = 0.00;
+        ySill = 0.02;
+        yWaist = 0.22;
+        yBelt = 0.48;
+      } else if (z > -0.75 && z < 0.75) {
+        // Cabin door section with coke-bottle tuck
+        const u = Math.abs(z) / 0.75;
+        xSill = THREE.MathUtils.lerp(0.840, 0.865, u);
+        xWaist = THREE.MathUtils.lerp(0.845, 0.875, u);
+        xBelt = THREE.MathUtils.lerp(0.835, 0.860, u);
+        yBelt = THREE.MathUtils.lerp(0.46, 0.44, u);
+      } else if (z > 1.75) {
+        // Front nose taper
+        const u = (z - 1.75) / 0.20;
+        xSill = THREE.MathUtils.lerp(0.85, 0.86, u);
+        xWaist = THREE.MathUtils.lerp(0.86, 0.86, u);
+        xBelt = THREE.MathUtils.lerp(0.85, 0.86, u);
+        yBelt = THREE.MathUtils.lerp(0.42, 0.34, u);
+      } else if (z < -1.75) {
+        // Rear valance taper
+        const u = (-1.75 - z) / 0.20;
+        xSill = THREE.MathUtils.lerp(0.86, 0.865, u);
+        xWaist = THREE.MathUtils.lerp(0.88, 0.865, u);
+        xBelt = THREE.MathUtils.lerp(0.86, 0.865, u);
+        yBelt = THREE.MathUtils.lerp(0.48, 0.44, u);
+      }
+
+      return { z, xSill, xWaist, xBelt, yFloor, ySill, yWaist, yBelt };
+    });
+
+    const numPts = 8;
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const zMin = zStations[0];
+    const zMax = zStations[zStations.length - 1];
+
+    profiles.forEach(p => {
+      const u = (p.z - zMin) / (zMax - zMin);
+      const ring = [
+        [0, p.yFloor, p.z, 0.5, 0.0],
+        [p.xSill, p.ySill, p.z, 0.65, 0.15],
+        [p.xWaist, p.yWaist, p.z, 0.80, 0.50],
+        [p.xBelt, p.yBelt, p.z, 0.95, 0.90],
+        [0, p.yBelt + 0.02, p.z, 0.5, 1.0],
+        [-p.xBelt, p.yBelt, p.z, 0.05, 0.90],
+        [-p.xWaist, p.yWaist, p.z, 0.20, 0.50],
+        [-p.xSill, p.ySill, p.z, 0.35, 0.15],
+      ];
+      for (const pt of ring) {
+        positions.push(pt[0], pt[1], pt[2]);
+        uvs.push(u, pt[4]);
+      }
+    });
+
+    for (let s = 0; s < profiles.length - 1; s++) {
+      const r0 = s * numPts;
+      const r1 = (s + 1) * numPts;
+      for (let i = 0; i < numPts; i++) {
+        const next = (i + 1) % numPts;
+        indices.push(r0 + i, r0 + next, r1 + next);
+        indices.push(r0 + i, r1 + next, r1 + i);
+      }
+    }
+
+    const rearCenterIdx = positions.length / 3;
+    const pRear = profiles[0];
+    positions.push(0, (pRear.yFloor + pRear.yBelt) / 2, pRear.z);
+    uvs.push(0, 0.5);
+    for (let i = 0; i < numPts; i++) {
+      const next = (i + 1) % numPts;
+      indices.push(rearCenterIdx, i, next);
+    }
+
+    const frontCenterIdx = positions.length / 3;
+    const pFront = profiles[profiles.length - 1];
+    positions.push(0, (pFront.yFloor + pFront.yBelt) / 2, pFront.z);
+    uvs.push(1, 0.5);
+    const rLast = (profiles.length - 1) * numPts;
+    for (let i = 0; i < numPts; i++) {
+      const next = (i + 1) % numPts;
+      indices.push(frontCenterIdx, rLast + next, rLast + i);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, bodyMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  private createSculptedRockerSill(sx: number, trimMat: THREE.Material): THREE.Mesh {
+    const zStart = -0.76;
+    const zEnd = 0.80;
+    const nSegs = 10;
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const width = 0.07;
+    const yBottom = 0.00;
+    const yTop = 0.12;
+
+    for (let j = 0; j <= nSegs; j++) {
+      const t = j / nSegs;
+      const z = THREE.MathUtils.lerp(zStart, zEnd, t);
+      const uZ = (z - 0.02) / 0.78;
+      const xOuter = sx * (0.845 + 0.025 * (uZ * uZ));
+      const xInner = xOuter - sx * width;
+
+      positions.push(xOuter, yBottom, z); uvs.push(0, t);
+      positions.push(xOuter, yTop, z);    uvs.push(0.33, t);
+      positions.push(xInner, yTop, z);    uvs.push(0.66, t);
+      positions.push(xInner, yBottom, z); uvs.push(1.0, t);
+    }
+
+    for (let j = 0; j < nSegs; j++) {
+      const s0 = j * 4;
+      const s1 = (j + 1) * 4;
+      indices.push(s0 + 0, s1 + 0, s1 + 1);
+      indices.push(s0 + 0, s1 + 1, s0 + 1);
+      indices.push(s0 + 1, s1 + 1, s1 + 2);
+      indices.push(s0 + 1, s1 + 2, s0 + 2);
+      indices.push(s0 + 2, s1 + 2, s1 + 3);
+      indices.push(s0 + 2, s1 + 3, s0 + 3);
+      indices.push(s0 + 3, s1 + 3, s1 + 0);
+      indices.push(s0 + 3, s1 + 0, s0 + 0);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, trimMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  private createDoorAccentStripe(sx: number, liveryMat: THREE.Material): THREE.Mesh {
+    const zStart = -0.74;
+    const zEnd = 0.74;
+    const nSegs = 8;
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const yCenter = 0.16;
+    const halfH = 0.035;
+
+    for (let j = 0; j <= nSegs; j++) {
+      const t = j / nSegs;
+      const z = THREE.MathUtils.lerp(zStart, zEnd, t);
+      const uZ = z / 0.74;
+      const x = sx * (0.848 + 0.025 * (uZ * uZ));
+
+      positions.push(x, yCenter - halfH, z); uvs.push(0, t);
+      positions.push(x, yCenter + halfH, z); uvs.push(1, t);
+    }
+
+    for (let j = 0; j < nSegs; j++) {
+      const s0 = j * 2;
+      const s1 = (j + 1) * 2;
+      if (sx > 0) {
+        indices.push(s0 + 0, s1 + 0, s1 + 1);
+        indices.push(s0 + 0, s1 + 1, s0 + 1);
+      } else {
+        indices.push(s0 + 0, s1 + 1, s1 + 0);
+        indices.push(s0 + 0, s0 + 1, s1 + 1);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    return new THREE.Mesh(geom, liveryMat);
+  }
+
+  private createSolidDoor(isRight: boolean, bodyMat: THREE.Material, trimMat: THREE.Material, glassMat: THREE.Material, liveryMat: THREE.Material): THREE.Group {
+    const group = new THREE.Group();
+    const sgn = isRight ? 1 : -1;
+    const zRear = -0.74;
+    const zFront = 0.74;
+    const nZ = 8;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const getWaistX = (z: number) => {
+      const uZ = z / 0.74;
+      return sgn * (0.845 + 0.025 * (uZ * uZ));
+    };
+
+    // 6 profile points per station
+    for (let j = 0; j <= nZ; j++) {
+      const t = j / nZ;
+      const z = THREE.MathUtils.lerp(zRear, zFront, t);
+      const baseX = getWaistX(z);
+
+      const pts = [
+        [baseX, 0.04, z],                          // 0: sill
+        [baseX + sgn * 0.006, 0.16, z],            // 1: lower door
+        [baseX + sgn * 0.016, 0.28, z],            // 2: swage line crease
+        [baseX + sgn * 0.010, 0.38, z],            // 3: upper door
+        [baseX, 0.44, z],                          // 4: beltline
+        [baseX - sgn * 0.080, 0.44, z],            // 5: inner door ledge
+      ];
+
+      for (let k = 0; k < pts.length; k++) {
+        positions.push(pts[k][0], pts[k][1], pts[k][2]);
+        uvs.push(t, k / (pts.length - 1));
+      }
+    }
+
+    const numPerStation = 6;
+    for (let j = 0; j < nZ; j++) {
+      const col0 = j * numPerStation;
+      const col1 = (j + 1) * numPerStation;
+      for (let k = 0; k < numPerStation - 1; k++) {
+        const p00 = col0 + k;
+        const p01 = col0 + k + 1;
+        const p10 = col1 + k;
+        const p11 = col1 + k + 1;
+        if (isRight) {
+          indices.push(p00, p01, p11);
+          indices.push(p00, p11, p10);
+        } else {
+          indices.push(p00, p11, p01);
+          indices.push(p00, p10, p11);
+        }
+      }
+    }
+
+    // Rear end cap (shutline border at z = -0.74)
+    const rearCapCenter = positions.length / 3;
+    positions.push(getWaistX(zRear) - sgn * 0.04, 0.24, zRear);
+    uvs.push(0, 0.5);
+    for (let k = 0; k < numPerStation - 1; k++) {
+      if (isRight) {
+        indices.push(rearCapCenter, k + 1, k);
+      } else {
+        indices.push(rearCapCenter, k, k + 1);
+      }
+    }
+
+    // Front end cap (shutline border at z = +0.74)
+    const frontCol = nZ * numPerStation;
+    const frontCapCenter = positions.length / 3;
+    positions.push(getWaistX(zFront) - sgn * 0.04, 0.24, zFront);
+    uvs.push(1, 0.5);
+    for (let k = 0; k < numPerStation - 1; k++) {
+      if (isRight) {
+        indices.push(frontCapCenter, frontCol + k, frontCol + k + 1);
+      } else {
+        indices.push(frontCapCenter, frontCol + k + 1, frontCol + k);
+      }
+    }
+
+    const doorGeom = new THREE.BufferGeometry();
+    doorGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    doorGeom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    doorGeom.setIndex(indices);
+    doorGeom.computeVertexNormals();
+
+    const doorSkinMesh = new THREE.Mesh(doorGeom, bodyMat);
+    doorSkinMesh.castShadow = true;
+    group.add(doorSkinMesh);
+
+    // Competition rally plate decal on door skin
+    const decalCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+    let decalTex: THREE.CanvasTexture | null = null;
+    if (decalCanvas) {
+      decalCanvas.width = 512;
+      decalCanvas.height = 256;
+      const dctx = decalCanvas.getContext('2d');
+      if (dctx) {
+        dctx.fillStyle = '#f8fafc';
+        dctx.fillRect(0, 0, 512, 256);
+        dctx.strokeStyle = '#0f172a';
+        dctx.lineWidth = 10;
+        dctx.strokeRect(6, 6, 500, 244);
+
+        // Red competition header
+        dctx.fillStyle = '#dc2626';
+        dctx.fillRect(10, 10, 492, 48);
+        dctx.fillStyle = '#ffffff';
+        dctx.font = 'bold 26px sans-serif';
+        dctx.textAlign = 'center';
+        dctx.textBaseline = 'middle';
+        dctx.fillText('007 RACING • GROUP B', 256, 34);
+
+        // Bold APEX RALLY
+        dctx.fillStyle = '#0f172a';
+        dctx.font = '900 52px sans-serif';
+        dctx.fillText('APEX', 256, 110);
+        dctx.font = 'bold 36px sans-serif';
+        dctx.fillText('RALLY', 256, 156);
+
+        // Homologation code
+        dctx.font = 'bold 22px monospace';
+        dctx.fillStyle = '#475569';
+        dctx.fillText('768MLE T1986', 256, 214);
+        decalTex = new THREE.CanvasTexture(decalCanvas);
+      }
+    }
+    const decalMat = decalTex
+      ? new THREE.MeshBasicMaterial({ map: decalTex })
+      : liveryMat;
+    const decalMesh = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.22), decalMat);
+    decalMesh.position.set(getWaistX(-0.05) + sgn * 0.018, 0.28, -0.05);
+    decalMesh.rotation.y = isRight ? Math.PI / 2 : -Math.PI / 2;
+    group.add(decalMesh);
+
+    // Recessed door handle pocket and silver pull lever
+    const handlePocket = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.05, 0.14), trimMat);
+    handlePocket.position.set(getWaistX(-0.15) + sgn * 0.008, 0.38, -0.15);
+    group.add(handlePocket);
+
+    const handleBar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.01, 0.018, 0.10),
+      new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.25, metalness: 0.85 })
+    );
+    handleBar.position.set(getWaistX(-0.15) + sgn * 0.012, 0.38, -0.15);
+    group.add(handleBar);
+
+    // B-pillar post in satin black
+    const bPillar = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.40, 0.05), trimMat);
+    bPillar.position.set(sgn * 0.665, 0.63, -0.32);
+    group.add(bPillar);
+
+    // Window top roof-rail frame in satin black
+    const windowRail = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.03, 1.12), trimMat);
+    windowRail.position.set(sgn * 0.655, 0.835, -0.18);
+    group.add(windowRail);
+
+    // Tinted door window glass
+    const doorGlass = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.37, 0.64), glassMat);
+    doorGlass.position.set(sgn * 0.670, 0.63, 0.04);
+    doorGlass.castShadow = true;
+    group.add(doorGlass);
+    this.cockpitObscuringMeshes.push(doorGlass);
+
+    // Tinted triangular rear quarter window glass
+    const quarterGlass = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.34, 0.38), glassMat);
+    quarterGlass.position.set(sgn * 0.665, 0.62, -0.52);
+    quarterGlass.castShadow = true;
+    group.add(quarterGlass);
+    this.cockpitObscuringMeshes.push(quarterGlass);
+
+    // Lower rocker accent / side exhaust outlet
+    const rockerAccent = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.04, 0.42), trimMat);
+    rockerAccent.position.set(getWaistX(-0.10) + sgn * 0.005, 0.06, -0.10);
+    group.add(rockerAccent);
+
+    return group;
+  }
+
+  private createSolidFrontFender(isRight: boolean, bodyMat: THREE.Material, trimMat: THREE.Material): THREE.Group {
+    const group = new THREE.Group();
+    const sgn = isRight ? 1 : -1;
+    const zAxle = 1.35;
+    const yCenter = 0.05;
+    const rIn = 0.395;
+    const numSegs = 12;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const xPeak = sgn * 0.940;
+    const xLip = sgn * 0.920;
+    const xHood = sgn * 0.740;
+
+    // Wheel arch flare face
+    for (let k = 0; k <= numSegs; k++) {
+      const theta = (k * Math.PI) / numSegs;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+
+      const zIn = zAxle + rIn * cosT;
+      const yIn = yCenter + rIn * sinT;
+
+      const zMid = zAxle + (rIn + 0.05) * cosT;
+      const yMid = yCenter + (rIn + 0.05) * sinT;
+
+      const zTop = zIn;
+      const uZ = (zIn - 0.74) / (1.95 - 0.74);
+      const yTop = THREE.MathUtils.lerp(0.44, 0.36, uZ);
+
+      positions.push(xLip, yIn, zIn);                  uvs.push(k / numSegs, 0.0);
+      positions.push(xPeak, yMid, zMid);               uvs.push(k / numSegs, 0.5);
+      positions.push(xHood, yTop, zTop);               uvs.push(k / numSegs, 1.0);
+    }
+
+    for (let k = 0; k < numSegs; k++) {
+      const v0 = k * 3;
+      const v1 = (k + 1) * 3;
+      if (isRight) {
+        indices.push(v0 + 0, v1 + 0, v1 + 1);
+        indices.push(v0 + 0, v1 + 1, v0 + 1);
+        indices.push(v0 + 1, v1 + 1, v1 + 2);
+        indices.push(v0 + 1, v1 + 2, v0 + 2);
+      } else {
+        indices.push(v0 + 0, v1 + 1, v1 + 0);
+        indices.push(v0 + 0, v0 + 1, v1 + 1);
+        indices.push(v0 + 1, v1 + 2, v1 + 1);
+        indices.push(v0 + 1, v0 + 2, v1 + 2);
+      }
+    }
+
+    // Forward solid panel to front bumper (z = 1.75 to 1.95)
+    const idxFrontBumper = positions.length / 3;
+    positions.push(sgn * 0.880, 0.06, 1.95);  uvs.push(0, 0.0);
+    positions.push(sgn * 0.880, 0.24, 1.95);  uvs.push(0, 0.5);
+    positions.push(xHood, 0.36, 1.95);        uvs.push(0, 1.0);
+
+    const f0 = 0; const f1 = 1; const f2 = 2;
+    if (isRight) {
+      indices.push(f0, idxFrontBumper, f1);
+      indices.push(f1, idxFrontBumper, idxFrontBumper + 1);
+      indices.push(f1, idxFrontBumper + 1, f2);
+      indices.push(f2, idxFrontBumper + 1, idxFrontBumper + 2);
+    } else {
+      indices.push(f0, f1, idxFrontBumper);
+      indices.push(f1, idxFrontBumper + 1, idxFrontBumper);
+      indices.push(f1, f2, idxFrontBumper + 1);
+      indices.push(f2, idxFrontBumper + 2, idxFrontBumper + 1);
+    }
+
+    // Aft solid panel to door shutline (z = 0.95 to 0.74)
+    const idxDoorJoin = positions.length / 3;
+    positions.push(sgn * 0.870, 0.04, 0.74);  uvs.push(1, 0.0);
+    positions.push(sgn * 0.870, 0.24, 0.74);  uvs.push(1, 0.5);
+    positions.push(xHood, 0.44, 0.74);        uvs.push(1, 1.0);
+
+    const r0 = numSegs * 3 + 0;
+    const r1 = numSegs * 3 + 1;
+    const r2 = numSegs * 3 + 2;
+    if (isRight) {
+      indices.push(r0, r1, idxDoorJoin);
+      indices.push(r1, idxDoorJoin + 1, idxDoorJoin);
+      indices.push(r1, r2, idxDoorJoin + 1);
+      indices.push(r2, idxDoorJoin + 2, idxDoorJoin + 1);
+    } else {
+      indices.push(r0, idxDoorJoin, r1);
+      indices.push(r1, idxDoorJoin, idxDoorJoin + 1);
+      indices.push(r1, idxDoorJoin + 1, r2);
+      indices.push(r2, idxDoorJoin + 1, idxDoorJoin + 2);
+    }
+
+    const fenderGeom = new THREE.BufferGeometry();
+    fenderGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    fenderGeom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    fenderGeom.setIndex(indices);
+    fenderGeom.computeVertexNormals();
+
+    const fenderMesh = new THREE.Mesh(fenderGeom, bodyMat);
+    fenderMesh.castShadow = true;
+    group.add(fenderMesh);
+
+    // Inner wheel liner
+    const linerPos: number[] = [];
+    const linerIndices: number[] = [];
+    for (let k = 0; k <= numSegs; k++) {
+      const theta = (k * Math.PI) / numSegs;
+      const zIn = zAxle + rIn * Math.cos(theta);
+      const yIn = yCenter + rIn * Math.sin(theta);
+      linerPos.push(xLip, yIn, zIn);
+      linerPos.push(sgn * 0.48, yIn, zIn);
+    }
+    for (let k = 0; k < numSegs; k++) {
+      const l0 = k * 2;
+      const l1 = (k + 1) * 2;
+      if (isRight) {
+        linerIndices.push(l0 + 0, l1 + 0, l1 + 1);
+        linerIndices.push(l0 + 0, l1 + 1, l0 + 1);
+      } else {
+        linerIndices.push(l0 + 0, l1 + 1, l1 + 0);
+        linerIndices.push(l0 + 0, l0 + 1, l1 + 1);
+      }
+    }
+    const linerGeom = new THREE.BufferGeometry();
+    linerGeom.setAttribute('position', new THREE.Float32BufferAttribute(linerPos, 3));
+    linerGeom.setIndex(linerIndices);
+    linerGeom.computeVertexNormals();
+    const linerMesh = new THREE.Mesh(linerGeom, trimMat);
+    group.add(linerMesh);
+
+    // Amber side repeater indicator lamp
+    const repeater = new THREE.Mesh(
+      new THREE.BoxGeometry(0.015, 0.03, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0xf59e0b, emissive: 0xf59e0b, emissiveIntensity: 0.5 })
+    );
+    repeater.position.set(sgn * 0.935, 0.28, 1.70);
+    group.add(repeater);
+
+    return group;
+  }
+
+  private createFrontFenderLedge(isRight: boolean, bodyMat: THREE.Material): THREE.Mesh {
+    const sgn = isRight ? 1 : -1;
+    const xInner = sgn * 0.740;
+    const xOuter = sgn * 0.850;
+    const zStart = 0.80;
+    const zEnd = 1.85;
+    const nSegs = 12;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (let k = 0; k <= nSegs; k++) {
+      const t = k / nSegs;
+      const z = THREE.MathUtils.lerp(zStart, zEnd, t);
+
+      // Inner edge aligns with hood shutline elevation
+      const yIn = 0.42 - (z - 1.28) * 0.04;
+
+      // Outer edge conforms to the blister arch flare shoulder
+      let yOut = yIn;
+      const dz = z - 1.35;
+      if (Math.abs(dz) < 0.475) {
+        const sinT = Math.sqrt(1 - (dz / 0.475) * (dz / 0.475));
+        const yArch = Math.min(0.46, 0.05 + 0.475 * sinT);
+        yOut = Math.max(yIn, yArch);
+      }
+
+      positions.push(xInner, yIn, z);
+      uvs.push(0, t);
+
+      positions.push(xOuter, yOut, z);
+      uvs.push(1, t);
+    }
+
+    for (let k = 0; k < nSegs; k++) {
+      const v0 = k * 2;
+      const v1 = (k + 1) * 2;
+      if (isRight) {
+        indices.push(v0 + 0, v1 + 1, v0 + 1);
+        indices.push(v0 + 0, v1 + 0, v1 + 1);
+      } else {
+        indices.push(v0 + 0, v0 + 1, v1 + 1);
+        indices.push(v0 + 0, v1 + 1, v1 + 0);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const ledgeMesh = new THREE.Mesh(geom, bodyMat);
+    ledgeMesh.castShadow = true;
+    return ledgeMesh;
+  }
+
+  private createSolidRearQuarter(isRight: boolean, bodyMat: THREE.Material, trimMat: THREE.Material): THREE.Group {
+    const group = new THREE.Group();
+    const sgn = isRight ? 1 : -1;
+    const zAxle = -1.35;
+    const yCenter = 0.05;
+    const rIn = 0.395;
+    const numSegs = 12;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const xPeak = sgn * 0.950;
+    const xLip = sgn * 0.930;
+    const xDeck = sgn * 0.710;
+
+    // Wheel arch flare face
+    for (let k = 0; k <= numSegs; k++) {
+      const theta = (k * Math.PI) / numSegs;
+      const cosT = Math.cos(theta);
+      const sinT = Math.sin(theta);
+
+      const zIn = zAxle + rIn * cosT;
+      const yIn = yCenter + rIn * sinT;
+
+      const zMid = zAxle + (rIn + 0.06) * cosT;
+      const yMid = yCenter + (rIn + 0.06) * sinT;
+
+      const zTop = zIn;
+      const yTop = 0.48;
+
+      positions.push(xLip, yIn, zIn);                  uvs.push(k / numSegs, 0.0);
+      positions.push(xPeak, yMid, zMid);               uvs.push(k / numSegs, 0.5);
+      positions.push(xDeck, yTop, zTop);               uvs.push(k / numSegs, 1.0);
+    }
+
+    for (let k = 0; k < numSegs; k++) {
+      const v0 = k * 3;
+      const v1 = (k + 1) * 3;
+      if (isRight) {
+        indices.push(v0 + 0, v1 + 0, v1 + 1);
+        indices.push(v0 + 0, v1 + 1, v0 + 1);
+        indices.push(v0 + 1, v1 + 1, v1 + 2);
+        indices.push(v0 + 1, v1 + 2, v0 + 2);
+      } else {
+        indices.push(v0 + 0, v1 + 1, v1 + 0);
+        indices.push(v0 + 0, v0 + 1, v1 + 1);
+        indices.push(v0 + 1, v1 + 2, v1 + 1);
+        indices.push(v0 + 1, v0 + 2, v1 + 2);
+      }
+    }
+
+    // Forward solid panel to door shutline (z = -0.95 to -0.74)
+    const f0 = 0; const f1 = 1; const f2 = 2;
+    const idxDoorJoin = positions.length / 3;
+    positions.push(sgn * 0.870, 0.04, -0.74); uvs.push(0, 0.0);
+    positions.push(sgn * 0.870, 0.24, -0.74); uvs.push(0, 0.5);
+    positions.push(xDeck, 0.46, -0.74);       uvs.push(0, 1.0);
+
+    if (isRight) {
+      indices.push(f0, idxDoorJoin, f1);
+      indices.push(f1, idxDoorJoin, idxDoorJoin + 1);
+      indices.push(f1, idxDoorJoin + 1, f2);
+      indices.push(f2, idxDoorJoin + 1, idxDoorJoin + 2);
+    } else {
+      indices.push(f0, f1, idxDoorJoin);
+      indices.push(f1, idxDoorJoin + 1, idxDoorJoin);
+      indices.push(f1, f2, idxDoorJoin + 1);
+      indices.push(f2, idxDoorJoin + 2, idxDoorJoin + 1);
+    }
+
+    // Rearward solid panel to rear bumper (z = -1.75 to -1.95)
+    const r0 = numSegs * 3 + 0;
+    const r1 = numSegs * 3 + 1;
+    const r2 = numSegs * 3 + 2;
+    const idxRearJoin = positions.length / 3;
+    positions.push(sgn * 0.880, 0.06, -1.95); uvs.push(1, 0.0);
+    positions.push(sgn * 0.880, 0.26, -1.95); uvs.push(1, 0.5);
+    positions.push(xDeck, 0.46, -1.95);       uvs.push(1, 1.0);
+
+    if (isRight) {
+      indices.push(r0, r1, idxRearJoin);
+      indices.push(r1, idxRearJoin + 1, idxRearJoin);
+      indices.push(r1, r2, idxRearJoin + 1);
+      indices.push(r2, idxRearJoin + 2, idxRearJoin + 1);
+    } else {
+      indices.push(r0, idxRearJoin, r1);
+      indices.push(r1, idxRearJoin, idxRearJoin + 1);
+      indices.push(r1, idxRearJoin + 1, r2);
+      indices.push(r2, idxRearJoin + 1, idxRearJoin + 2);
+    }
+
+    const quarterGeom = new THREE.BufferGeometry();
+    quarterGeom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    quarterGeom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    quarterGeom.setIndex(indices);
+    quarterGeom.computeVertexNormals();
+
+    const quarterMesh = new THREE.Mesh(quarterGeom, bodyMat);
+    quarterMesh.castShadow = true;
+    group.add(quarterMesh);
+
+    // Inner wheel liner
+    const linerPos: number[] = [];
+    const linerIndices: number[] = [];
+    for (let k = 0; k <= numSegs; k++) {
+      const theta = (k * Math.PI) / numSegs;
+      const zIn = zAxle + rIn * Math.cos(theta);
+      const yIn = yCenter + rIn * Math.sin(theta);
+      linerPos.push(xLip, yIn, zIn);
+      linerPos.push(sgn * 0.62, yIn, zIn);
+    }
+    for (let k = 0; k < numSegs; k++) {
+      const l0 = k * 2;
+      const l1 = (k + 1) * 2;
+      if (isRight) {
+        linerIndices.push(l0 + 0, l1 + 0, l1 + 1);
+        linerIndices.push(l0 + 0, l1 + 1, l0 + 1);
+      } else {
+        linerIndices.push(l0 + 0, l1 + 1, l1 + 0);
+        linerIndices.push(l0 + 0, l0 + 1, l1 + 1);
+      }
+    }
+    const linerGeom = new THREE.BufferGeometry();
+    linerGeom.setAttribute('position', new THREE.Float32BufferAttribute(linerPos, 3));
+    linerGeom.setIndex(linerIndices);
+    linerGeom.computeVertexNormals();
+    const linerMesh = new THREE.Mesh(linerGeom, trimMat);
+    group.add(linerMesh);
+
+    // Ram-Air NACA Intake Scoop on top shoulder
+    const nacaHousing = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.05, 0.24), trimMat);
+    nacaHousing.position.set(sgn * 0.76, 0.50, -0.85);
+    group.add(nacaHousing);
+
+    const nacaMouth = new THREE.Mesh(
+      new THREE.BoxGeometry(0.08, 0.03, 0.02),
+      new THREE.MeshBasicMaterial({ color: 0x0a0a0a })
+    );
+    nacaMouth.position.set(sgn * 0.76, 0.50, -0.73);
+    group.add(nacaMouth);
+
+    // Protective matte black stone guard film on forward flare face
+    const stoneGuard = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.22, 0.16), trimMat);
+    stoneGuard.position.set(sgn * 0.945, 0.20, -0.82);
+    group.add(stoneGuard);
+
+    return group;
+  }
+
+  private createCrownedRoof(bodyMat: THREE.Material): THREE.Mesh {
+    const zFront = 0.16;
+    const zRear = -0.66;
+    const xHalf = 0.65;
+    const nZ = 10;
+    const nX = 8;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const getTopY = (x: number, z: number) => {
+      const uZ = (z - (-0.22)) / 0.44;
+      const yLong = 0.900 - 0.038 * (uZ * uZ);
+      const uX = x / xHalf;
+      const yLat = -0.020 * (uX * uX);
+      return yLong + yLat;
+    };
+
+    for (let j = 0; j <= nZ; j++) {
+      const z = THREE.MathUtils.lerp(zFront, zRear, j / nZ);
+      for (let i = 0; i <= nX; i++) {
+        const x = THREE.MathUtils.lerp(-xHalf, xHalf, i / nX);
+        const y = getTopY(x, z);
+        positions.push(x, y, z);
+        uvs.push(i / nX, j / nZ);
+      }
+    }
+
+    const rowSize = nX + 1;
+    for (let j = 0; j < nZ; j++) {
+      for (let i = 0; i < nX; i++) {
+        const p00 = j * rowSize + i;
+        const p10 = p00 + 1;
+        const p01 = (j + 1) * rowSize + i;
+        const p11 = p01 + 1;
+        indices.push(p00, p11, p01);
+        indices.push(p00, p10, p11);
+      }
+    }
+
+    const botOffset = positions.length / 3;
+    for (let j = 0; j <= nZ; j++) {
+      const z = THREE.MathUtils.lerp(zFront, zRear, j / nZ);
+      for (let i = 0; i <= nX; i++) {
+        const x = THREE.MathUtils.lerp(-xHalf, xHalf, i / nX);
+        const y = getTopY(x, z) - 0.035;
+        positions.push(x, y, z);
+        uvs.push(i / nX, j / nZ);
+      }
+    }
+
+    for (let j = 0; j < nZ; j++) {
+      for (let i = 0; i < nX; i++) {
+        const p00 = botOffset + j * rowSize + i;
+        const p10 = p00 + 1;
+        const p01 = botOffset + (j + 1) * rowSize + i;
+        const p11 = p01 + 1;
+        indices.push(p00, p01, p11);
+        indices.push(p00, p11, p10);
+      }
+    }
+
+    for (let j = 0; j < nZ; j++) {
+      const top0 = j * rowSize;
+      const top1 = (j + 1) * rowSize;
+      const bot0 = botOffset + j * rowSize;
+      const bot1 = botOffset + (j + 1) * rowSize;
+      indices.push(top0, bot0, bot1);
+      indices.push(top0, bot1, top1);
+    }
+    for (let j = 0; j < nZ; j++) {
+      const top0 = j * rowSize + nX;
+      const top1 = (j + 1) * rowSize + nX;
+      const bot0 = botOffset + j * rowSize + nX;
+      const bot1 = botOffset + (j + 1) * rowSize + nX;
+      indices.push(top0, top1, bot1);
+      indices.push(top0, bot1, bot0);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const roofMesh = new THREE.Mesh(geom, bodyMat);
+    roofMesh.castShadow = true;
+    return roofMesh;
+  }
+
+  private createCrownedRoofStripe(liveryMat: THREE.Material): THREE.Group {
+    const group = new THREE.Group();
+    const zFront = 0.15;
+    const zRear = -0.65;
+    const nSegs = 10;
+
+    const getTopY = (x: number, z: number) => {
+      const uZ = (z - (-0.22)) / 0.44;
+      const yLong = 0.900 - 0.038 * (uZ * uZ);
+      const uX = x / 0.65;
+      const yLat = -0.020 * (uX * uX);
+      return yLong + yLat + 0.003;
+    };
+
+    for (const sx of [-1, 1]) {
+      const xIn = sx * 0.06;
+      const xOut = sx * 0.22;
+      const positions: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      for (let j = 0; j <= nSegs; j++) {
+        const t = j / nSegs;
+        const z = THREE.MathUtils.lerp(zFront, zRear, t);
+        const y0 = getTopY(xIn, z);
+        const y1 = getTopY(xOut, z);
+        positions.push(xIn, y0, z);  uvs.push(0, t);
+        positions.push(xOut, y1, z); uvs.push(1, t);
+      }
+
+      for (let j = 0; j < nSegs; j++) {
+        const s0 = j * 2;
+        const s1 = (j + 1) * 2;
+        if (sx > 0) {
+          indices.push(s0 + 0, s1 + 1, s1 + 0);
+          indices.push(s0 + 0, s0 + 1, s1 + 1);
+        } else {
+          indices.push(s0 + 0, s1 + 0, s1 + 1);
+          indices.push(s0 + 0, s1 + 1, s0 + 1);
+        }
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+
+      group.add(new THREE.Mesh(geom, liveryMat));
+    }
+    return group;
+  }
+
+  private createSculptedCPillar(cx: number, bodyMat: THREE.Material): THREE.Mesh {
+    const zTop = -0.66;
+    const yTop = 0.835;
+    const xTop = cx;
+
+    const zBot = -1.58;
+    const yBot = 0.50;
+    const xBot = cx * 1.14;
+
+    const nSegs = 6;
+    const width = 0.22;
+    const thickness = 0.10;
+    const sgn = cx > 0 ? 1 : -1;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (let j = 0; j <= nSegs; j++) {
+      const t = j / nSegs;
+      const z = THREE.MathUtils.lerp(zTop, zBot, t);
+      const y = THREE.MathUtils.lerp(yTop, yBot, t);
+      const x = THREE.MathUtils.lerp(xTop, xBot, t);
+
+      positions.push(x, y, z);                           uvs.push(0, t);
+      positions.push(x, y - thickness, z);               uvs.push(0.33, t);
+      positions.push(x - sgn * width, y - thickness, z); uvs.push(0.66, t);
+      positions.push(x - sgn * width, y, z);             uvs.push(1.0, t);
+    }
+
+    for (let j = 0; j < nSegs; j++) {
+      const s0 = j * 4;
+      const s1 = (j + 1) * 4;
+      if (cx > 0) {
+        indices.push(s0 + 0, s1 + 0, s1 + 1);
+        indices.push(s0 + 0, s1 + 1, s0 + 1);
+        indices.push(s0 + 1, s1 + 1, s1 + 2);
+        indices.push(s0 + 1, s1 + 2, s0 + 2);
+        indices.push(s0 + 2, s1 + 2, s1 + 3);
+        indices.push(s0 + 2, s1 + 3, s0 + 3);
+        indices.push(s0 + 3, s1 + 3, s1 + 0);
+        indices.push(s0 + 3, s1 + 0, s0 + 0);
+      } else {
+        indices.push(s0 + 0, s1 + 1, s1 + 0);
+        indices.push(s0 + 0, s0 + 1, s1 + 1);
+        indices.push(s0 + 1, s1 + 2, s1 + 1);
+        indices.push(s0 + 1, s0 + 2, s1 + 2);
+        indices.push(s0 + 2, s1 + 3, s1 + 2);
+        indices.push(s0 + 2, s0 + 3, s1 + 3);
+        indices.push(s0 + 3, s1 + 0, s1 + 3);
+        indices.push(s0 + 3, s0 + 0, s1 + 0);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, bodyMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  private createContouredWingBlade(trimMat: THREE.Material): THREE.Mesh {
+    const span = 1.420;
+    const chord = 0.400;
+    const zLeading = -1.850;
+    const pitchRad = -5.0 * (Math.PI / 180.0);
+
+    const nSpan = 8;
+    const nChord = 12;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (let j = 0; j <= nChord; j++) {
+      const s = j / nChord;
+      const zLocal = -s * chord * Math.cos(pitchRad);
+      const zWorld = zLeading + zLocal;
+      const yPitch = -s * chord * Math.sin(pitchRad);
+
+      const camber = 0.045 * (4 * s * (1 - s));
+      const thickness = 0.040 * (4 * s * (1 - s));
+      const yUpper = 0.880 + yPitch + camber + thickness * 0.5;
+
+      for (let i = 0; i <= nSpan; i++) {
+        const x = THREE.MathUtils.lerp(-span / 2, span / 2, i / nSpan);
+        positions.push(x, yUpper, zWorld);
+        uvs.push(i / nSpan, s);
+      }
+    }
+
+    const rowSize = nSpan + 1;
+    for (let j = 0; j < nChord; j++) {
+      for (let i = 0; i < nSpan; i++) {
+        const p00 = j * rowSize + i;
+        const p10 = p00 + 1;
+        const p01 = (j + 1) * rowSize + i;
+        const p11 = p01 + 1;
+        indices.push(p00, p11, p01);
+        indices.push(p00, p10, p11);
+      }
+    }
+
+    const lowerOffset = positions.length / 3;
+    for (let j = 0; j <= nChord; j++) {
+      const s = j / nChord;
+      const zLocal = -s * chord * Math.cos(pitchRad);
+      const zWorld = zLeading + zLocal;
+      const yPitch = -s * chord * Math.sin(pitchRad);
+
+      const camber = 0.045 * (4 * s * (1 - s));
+      const thickness = 0.040 * (4 * s * (1 - s));
+      const yLower = 0.880 + yPitch + camber - thickness * 0.5;
+
+      for (let i = 0; i <= nSpan; i++) {
+        const x = THREE.MathUtils.lerp(-span / 2, span / 2, i / nSpan);
+        positions.push(x, yLower, zWorld);
+        uvs.push(i / nSpan, s);
+      }
+    }
+
+    for (let j = 0; j < nChord; j++) {
+      for (let i = 0; i < nSpan; i++) {
+        const p00 = lowerOffset + j * rowSize + i;
+        const p10 = p00 + 1;
+        const p01 = lowerOffset + (j + 1) * rowSize + i;
+        const p11 = p01 + 1;
+        indices.push(p00, p01, p11);
+        indices.push(p00, p11, p10);
+      }
+    }
+
+    for (let i = 0; i < nSpan; i++) {
+      const top0 = i;
+      const top1 = i + 1;
+      const bot0 = lowerOffset + i;
+      const bot1 = lowerOffset + i + 1;
+      indices.push(top0, bot1, bot0);
+      indices.push(top0, top1, bot1);
+    }
+
+    const lastRowTop = nChord * rowSize;
+    const lastRowBot = lowerOffset + nChord * rowSize;
+    for (let i = 0; i < nSpan; i++) {
+      const top0 = lastRowTop + i;
+      const top1 = lastRowTop + i + 1;
+      const bot0 = lastRowBot + i;
+      const bot1 = lastRowBot + i + 1;
+      indices.push(top0, bot0, bot1);
+      indices.push(top0, bot1, top1);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const bladeMesh = new THREE.Mesh(geom, trimMat);
+    bladeMesh.castShadow = true;
+    return bladeMesh;
+  }
+
+  private createSweptPylon(px: number, trimMat: THREE.Material): THREE.Mesh {
+    const zBot = -1.75;
+    const yBot = 0.48;
+    const zTop = -2.02;
+    const yTop = 0.86;
+
+    const chordBot = 0.22;
+    const chordTop = 0.18;
+    const width = 0.038;
+
+    const x0 = px - width / 2;
+    const x1 = px + width / 2;
+
+    const pts = [
+      [zBot + chordBot / 2, yBot],
+      [zBot - chordBot / 2, yBot],
+      [zTop - chordTop / 2, yTop],
+      [zTop + chordTop / 2, yTop],
+    ];
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    for (const pt of pts) {
+      positions.push(x0, pt[1], pt[0]);
+      uvs.push(0, (pt[1] - yBot) / (yTop - yBot));
+    }
+    for (const pt of pts) {
+      positions.push(x1, pt[1], pt[0]);
+      uvs.push(1, (pt[1] - yBot) / (yTop - yBot));
+    }
+
+    indices.push(0, 2, 1);
+    indices.push(0, 3, 2);
+    indices.push(4, 5, 6);
+    indices.push(4, 6, 7);
+    indices.push(0, 4, 7);
+    indices.push(0, 7, 3);
+    indices.push(3, 7, 6);
+    indices.push(3, 6, 2);
+    indices.push(2, 6, 5);
+    indices.push(2, 5, 1);
+    indices.push(1, 5, 4);
+    indices.push(1, 4, 0);
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, trimMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  private createWingEndplate(ex: number, trimMat: THREE.Material): THREE.Mesh {
+    const sgn = ex > 0 ? 1 : -1;
+    const th = 0.025;
+
+    // Swept aerodynamic fin anchored seamlessly to rear haunch shoulder (z=-1.65, y=0.50)
+    const profile = [
+      [-1.65, 0.50], // 0: haunch anchor
+      [-1.76, 0.72], // 1: rising leading edge
+      [-1.88, 0.95], // 2: top leading crest
+      [-2.26, 0.94], // 3: top trailing crest
+      [-2.26, 0.66], // 4: bottom trailing edge
+      [-1.95, 0.48], // 5: bottom deck anchor
+    ];
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const xOuter = ex;
+    const xInner = ex - sgn * th;
+
+    for (let i = 0; i < profile.length; i++) {
+      positions.push(xOuter, profile[i][1], profile[i][0]);
+      uvs.push((profile[i][0] + 2.26) / 0.61, (profile[i][1] - 0.48) / 0.47);
+    }
+    for (let i = 0; i < profile.length; i++) {
+      positions.push(xInner, profile[i][1], profile[i][0]);
+      uvs.push((profile[i][0] + 2.26) / 0.61, (profile[i][1] - 0.48) / 0.47);
+    }
+
+    if (ex > 0) {
+      indices.push(0, 1, 2);
+      indices.push(0, 2, 3);
+      indices.push(0, 3, 4);
+      indices.push(0, 4, 5);
+      indices.push(6, 8, 7);
+      indices.push(6, 9, 8);
+      indices.push(6, 10, 9);
+      indices.push(6, 11, 10);
+    } else {
+      indices.push(0, 2, 1);
+      indices.push(0, 3, 2);
+      indices.push(0, 4, 3);
+      indices.push(0, 5, 4);
+      indices.push(6, 7, 8);
+      indices.push(6, 8, 9);
+      indices.push(6, 9, 10);
+      indices.push(6, 10, 11);
+    }
+
+    const n = profile.length;
+    for (let i = 0; i < n; i++) {
+      const next = (i + 1) % n;
+      const o0 = i;
+      const o1 = next;
+      const i0 = i + n;
+      const i1 = next + n;
+      if (ex > 0) {
+        indices.push(o0, i0, i1);
+        indices.push(o0, i1, o1);
+      } else {
+        indices.push(o0, i1, i0);
+        indices.push(o0, o1, i1);
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, trimMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  private createBeveledBumper(isFront: boolean, bodyMat: THREE.Material): THREE.Mesh {
+    const zCenter = isFront ? 2.02 : -2.00;
+    const yCenter = 0.17;
+    const halfH = 0.15;
+    const halfW = isFront ? 0.88 : 0.87;
+    const halfWFlat = isFront ? 0.72 : 0.72;
+    const dZBevel = isFront ? -0.12 : 0.10;
+
+    const positions: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const xStations = [-halfW, -halfWFlat, halfWFlat, halfW];
+    const zOffsets = [dZBevel, 0, 0, dZBevel];
+    const depth = 0.22;
+
+    for (let i = 0; i < 4; i++) {
+      const x = xStations[i];
+      const zF = zCenter + (isFront ? depth / 2 : -depth / 2) + zOffsets[i];
+      positions.push(x, yCenter - halfH, zF); uvs.push(i / 3, 0);
+      positions.push(x, yCenter + halfH, zF); uvs.push(i / 3, 1);
+    }
+
+    const backOffset = positions.length / 3;
+    for (let i = 0; i < 4; i++) {
+      const x = xStations[i];
+      const zB = zCenter - (isFront ? depth / 2 : -depth / 2);
+      positions.push(x, yCenter - halfH, zB); uvs.push(i / 3, 0);
+      positions.push(x, yCenter + halfH, zB); uvs.push(i / 3, 1);
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const p0 = i * 2;
+      const p1 = (i + 1) * 2;
+      if (isFront) {
+        indices.push(p0 + 0, p1 + 0, p1 + 1);
+        indices.push(p0 + 0, p1 + 1, p0 + 1);
+      } else {
+        indices.push(p0 + 0, p1 + 1, p1 + 0);
+        indices.push(p0 + 0, p0 + 1, p1 + 1);
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const p0 = backOffset + i * 2;
+      const p1 = backOffset + (i + 1) * 2;
+      if (isFront) {
+        indices.push(p0 + 0, p1 + 1, p1 + 0);
+        indices.push(p0 + 0, p0 + 1, p1 + 1);
+      } else {
+        indices.push(p0 + 0, p1 + 0, p1 + 1);
+        indices.push(p0 + 0, p1 + 1, p0 + 1);
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const f0 = i * 2 + 1;
+      const f1 = (i + 1) * 2 + 1;
+      const b0 = backOffset + i * 2 + 1;
+      const b1 = backOffset + (i + 1) * 2 + 1;
+      if (isFront) {
+        indices.push(f0, b0, b1);
+        indices.push(f0, b1, f1);
+      } else {
+        indices.push(f0, b1, b0);
+        indices.push(f0, f1, b1);
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      const f0 = i * 2;
+      const f1 = (i + 1) * 2;
+      const b0 = backOffset + i * 2;
+      const b1 = backOffset + (i + 1) * 2;
+      if (isFront) {
+        indices.push(f0, b1, b0);
+        indices.push(f0, f1, b1);
+      } else {
+        indices.push(f0, b0, b1);
+        indices.push(f0, b1, f1);
+      }
+    }
+
+    const lf0 = 0;
+    const lf1 = 1;
+    const lb0 = backOffset;
+    const lb1 = backOffset + 1;
+    if (isFront) {
+      indices.push(lf0, lf1, lb1);
+      indices.push(lf0, lb1, lb0);
+    } else {
+      indices.push(lf0, lb1, lf1);
+      indices.push(lf0, lb0, lb1);
+    }
+
+    const rf0 = 6;
+    const rf1 = 7;
+    const rb0 = backOffset + 6;
+    const rb1 = backOffset + 7;
+    if (isFront) {
+      indices.push(rf0, rb1, rf1);
+      indices.push(rf0, rb0, rb1);
+    } else {
+      indices.push(rf0, rf1, rb1);
+      indices.push(rf0, rb1, rb0);
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+
+    const mesh = new THREE.Mesh(geom, bodyMat);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
   private createChassisVisuals(): void {
     const carGroup = new THREE.Group();
     this.carGroup = carGroup;
 
-    // Materials using verified sampled palette
+    // Materials using verified sampled palette with smooth normal interpolation
     const bodyMat = new THREE.MeshStandardMaterial({
       color: THREE_PALETTE.carBodyLit,
       roughness: 0.35,
       metalness: 0.1,
-      flatShading: true,
+      flatShading: false,
     });
     this.bodyMaterials.push(bodyMat);
 
@@ -1541,15 +2869,15 @@ export class CustomRallyVehicle {
       color: THREE_PALETTE.carTrimBlack,
       roughness: 0.8,
       metalness: 0.1,
-      flatShading: true,
+      flatShading: false,
     });
 
     const glassMat = new THREE.MeshStandardMaterial({
-      color: 0x64748b,
-      roughness: 0.05,
-      metalness: 0.1,
+      color: 0x1e293b,
+      roughness: 0.15,
+      metalness: 0.40,
       transparent: true,
-      opacity: 0.20,
+      opacity: 0.58,
       depthWrite: false,
     });
 
@@ -1632,17 +2960,14 @@ export class CustomRallyVehicle {
     // =========================================================================
     // 1. MAIN LOWER BODY & SCULPTED CHASSIS
     // =========================================================================
-    // Central cabin/engine tub
-    const lowerBody = new THREE.Mesh(new THREE.BoxGeometry(1.68, 0.38, 3.85), bodyMat);
-    lowerBody.position.set(0, 0.19, 0.02);
-    lowerBody.castShadow = true;
+    // Central cabin/engine tub with fluid coke-bottle waistline & wheel recesses
+    const lowerBody = this.createSculptedLowerBody(bodyMat);
     this.chassisMainGroup.add(lowerBody);
     this.cockpitObscuringMeshes.push(lowerBody);
 
-    // Sculpted rocker sills (bottom aerodynamic skirts)
-    for (const sx of [-0.85, 0.85]) {
-      const sill = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 2.05), trimMat);
-      sill.position.set(sx, 0.04, 0.0);
+    // Sculpted rocker sills (bottom aerodynamic skirts conforming to coke-bottle curve)
+    for (const sx of [-1, 1]) {
+      const sill = this.createSculptedRockerSill(sx, trimMat);
       this.chassisMainGroup.add(sill);
     }
 
@@ -1671,7 +2996,7 @@ export class CustomRallyVehicle {
     }
 
     // Central turbo intercooler hood scoop
-    const scoopMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.7, flatShading: true });
+    const scoopMat = new THREE.MeshStandardMaterial({ color: 0x18181b, roughness: 0.7, flatShading: false });
     const hoodScoop = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.44), scoopMat);
     hoodScoop.position.set(0, 0.43, 1.30);
     this.hoodGroup.add(hoodScoop);
@@ -1680,30 +3005,30 @@ export class CustomRallyVehicle {
     scoopIntake.position.set(0, 0.43, 1.52);
     this.hoodGroup.add(scoopIntake);
 
-    // Rally competition livery stripes (Alpine white)
+    // Rally competition livery stripes (Alpine white) with smooth shading
     const liveryMat = new THREE.MeshStandardMaterial({
-
       color: 0xf8fafc,
       roughness: 0.3,
       metalness: 0.2,
-      flatShading: true,
+      flatShading: false,
     });
     this.stripeMaterials.push(liveryMat);
 
-    const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 1.28), liveryMat);
-    hoodStripe.position.set(0, 0.422, 1.28);
-    hoodStripe.rotation.x = 0.04;
-    this.hoodGroup.add(hoodStripe);
+    // Twin Alpine white center racing stripes on hood
+    for (const sx of [-1, 1]) {
+      const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.01, 1.28), liveryMat);
+      hoodStripe.position.set(sx * 0.14, 0.422, 1.28);
+      hoodStripe.rotation.x = 0.04;
+      this.hoodGroup.add(hoodStripe);
+    }
 
-    const roofStripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.01, 0.94), liveryMat);
-    roofStripe.position.set(0, 0.892, -0.25);
+    const roofStripe = this.createCrownedRoofStripe(liveryMat);
     this.chassisMainGroup.add(roofStripe);
     this.cockpitObscuringMeshes.push(roofStripe);
 
-    // Door competition lower rocker accent decals
-    for (const sx of [-0.852, 0.852]) {
-      const doorStripe = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.07, 1.95), liveryMat);
-      doorStripe.position.set(sx, 0.16, 0.0);
+    // Door competition lower rocker accent decals conforming to coke-bottle curve
+    for (const sx of [-1, 1]) {
+      const doorStripe = this.createDoorAccentStripe(sx, liveryMat);
       this.chassisMainGroup.add(doorStripe);
     }
 
@@ -1775,18 +3100,18 @@ export class CustomRallyVehicle {
     // =========================================================================
     // 2. COUPE GREENHOUSE & SLOPED FASTBACK REAR WINDOW
     // =========================================================================
-    // Raked front windshield
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.36, 0.05, 0.72), glassMat);
-    windshield.position.set(0, 0.62, 0.38);
-    windshield.rotation.x = -0.68; // ~39 deg rake
+    // Raked front windshield: slopes smoothly from cowl (Z=0.74, Y=0.44) up to roof (Z=0.16, Y=0.84)
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.04, 0.70), glassMat);
+    windshield.position.set(0, 0.64, 0.45);
+    windshield.rotation.x = 0.604; // ~34.6 deg rake: local +Z slopes down towards front cowl
     windshield.castShadow = true;
     this.chassisMainGroup.add(windshield);
 
     // Structural A-pillars
-    for (const ax of [-0.68, 0.68]) {
-      const apillar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.74), bodyMat);
-      apillar.position.set(ax, 0.62, 0.38);
-      apillar.rotation.x = -0.68;
+    for (const ax of [-0.67, 0.67]) {
+      const apillar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.71), bodyMat);
+      apillar.position.set(ax, 0.64, 0.45);
+      apillar.rotation.x = 0.604;
       this.chassisMainGroup.add(apillar);
       this.cockpitObscuringMeshes.push(apillar);
     }
@@ -1812,16 +3137,14 @@ export class CustomRallyVehicle {
     const sunVisorMat = bannerTex 
       ? new THREE.MeshBasicMaterial({ map: bannerTex })
       : new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.6 });
-    const sunVisorBanner = new THREE.Mesh(new THREE.BoxGeometry(1.34, 0.10, 0.02), sunVisorMat);
-    sunVisorBanner.position.set(0, 0.81, 0.16);
-    sunVisorBanner.rotation.x = -0.68;
+    const sunVisorBanner = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.09, 0.02), sunVisorMat);
+    sunVisorBanner.position.set(0, 0.79, 0.23);
+    sunVisorBanner.rotation.x = 0.604;
     this.chassisMainGroup.add(sunVisorBanner);
     this.cockpitObscuringMeshes.push(sunVisorBanner);
 
-    // Coupe roof cap
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(1.32, 0.06, 0.95), bodyMat);
-    roof.position.set(0, 0.86, -0.25);
-    roof.castShadow = true;
+    // Coupe roof cap with smooth aerodynamic longitudinal and lateral crowning
+    const roof = this.createCrownedRoof(bodyMat);
     this.chassisMainGroup.add(roof);
 
     // Roof rally air scoop / periscope (220mm wide x 90mm tall per CAD §5.2)
@@ -1832,33 +3155,29 @@ export class CustomRallyVehicle {
     this.cockpitObscuringMeshes.push(roof, roofScoop, windshield);
 
     // SLOPED REAR FASTBACK WINDOW (Coupe Silhouette Key Element)
-    // Long aerodynamic fastback glass sweeping down from roof to trunk deck
-    const fastbackWindow = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.04, 0.98), glassMat);
-    fastbackWindow.position.set(0, 0.67, -1.14);
-    fastbackWindow.rotation.x = 0.44; // ~25 deg fastback rake
+    // Long aerodynamic fastback glass sweeping down from roof (Z=-0.66, Y=0.84) to trunk deck (Z=-1.54, Y=0.48)
+    const fastbackWindow = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.04, 0.95), glassMat);
+    fastbackWindow.position.set(0, 0.66, -1.10);
+    fastbackWindow.rotation.x = -0.388; // ~22.2 deg fastback rake: local +Z points up towards roof
     fastbackWindow.castShadow = true;
     this.chassisMainGroup.add(fastbackWindow);
 
-    // Sculpted C-pillar fastback flanks (left and right quarter panels)
-    for (const cx of [-0.68, 0.68]) {
-      const cpillar = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.38, 0.92), bodyMat);
-      cpillar.position.set(cx, 0.65, -1.12);
-      cpillar.rotation.x = 0.44;
-      cpillar.castShadow = true;
-      this.chassisMainGroup.add(cpillar);
+    // 5 Aerodynamic Matte Black Engine Cooling Louver Slats across fastback glass
+    for (let s = 0; s < 5; s++) {
+      const t = s / 4;
+      const louverZ = THREE.MathUtils.lerp(-0.78, -1.42, t);
+      const louverY = THREE.MathUtils.lerp(0.80, 0.52, t) + 0.02;
+      const louverSlat = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.015, 0.08), trimMat);
+      louverSlat.position.set(0, louverY, louverZ);
+      louverSlat.rotation.x = -0.388;
+      this.chassisMainGroup.add(louverSlat);
+      this.cockpitObscuringMeshes.push(louverSlat);
     }
 
-    // Triangular coupe side windows
-    for (const sx of [-0.68, 0.68]) {
-      const sideGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.38, 0.68), glassMat);
-      sideGlass.position.set(sx, 0.63, -0.25);
-      this.chassisMainGroup.add(sideGlass);
-      this.cockpitObscuringMeshes.push(sideGlass);
-
-      const quarterGlass = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.38), glassMat);
-      quarterGlass.position.set(sx, 0.58, -0.72);
-      this.chassisMainGroup.add(quarterGlass);
-      this.cockpitObscuringMeshes.push(quarterGlass);
+    // Sculpted C-pillar fastback flying buttress haunches (tumblehome slope & blister blend)
+    for (const cx of [-0.65, 0.65]) {
+      const cpillar = this.createSculptedCPillar(cx, bodyMat);
+      this.chassisMainGroup.add(cpillar);
     }
 
     // Rear trunk deck lid extending from base of sloped rear window to rear valence
@@ -1866,6 +3185,17 @@ export class CustomRallyVehicle {
     trunkLid.position.set(0, 0.45, -1.78);
     trunkLid.castShadow = true;
     this.chassisMainGroup.add(trunkLid);
+
+    // Dual white competition stripes across trunk deck lid (matching reference blueprint)
+    for (const sx of [-0.10, 0.10]) {
+      const deckStripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.006, 0.44),
+        liveryMat
+      );
+      deckStripe.position.set(sx, 0.504, -1.76);
+      deckStripe.castShadow = true;
+      this.chassisMainGroup.add(deckStripe);
+    }
 
     // Visible interior: tubular roll cage structure and bucket seat headrests
     const rollHoop = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.04, 0.04), rollCageMat);
@@ -1879,9 +3209,9 @@ export class CustomRallyVehicle {
       this.chassisMainGroup.add(rollLeg);
       this.cockpitObscuringMeshes.push(rollLeg);
 
-      const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.85), rollCageMat);
-      rearStay.position.set(rx, 0.63, -0.80);
-      rearStay.rotation.x = 0.45;
+      const rearStay = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.94), rollCageMat);
+      rearStay.position.set(rx, 0.65, -1.10);
+      rearStay.rotation.x = -0.388;
       this.chassisMainGroup.add(rearStay);
       this.cockpitObscuringMeshes.push(rearStay);
     }
@@ -1894,45 +3224,31 @@ export class CustomRallyVehicle {
     }
 
     // =========================================================================
-    // 3. FLARED WIDE-BODY WHEEL ARCHES (BOX FENDERS)
+    // 3. SOLID SCULPTED DOORS, FRONT FENDERS & REAR QUARTER HAUNCHES
     // =========================================================================
-    // Front flared blister arches (1,880mm overall front width at X=±0.940m per CAD §1.2)
-    for (const fx of [-0.86, 0.86]) {
-      const frontArch = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.36, 0.98), bodyMat);
-      frontArch.position.set(fx, 0.19, 1.35);
-      frontArch.castShadow = true;
-      this.chassisMainGroup.add(frontArch);
+    for (const isRight of [false, true]) {
+      // Solid contoured door with swage crease, handle, rally decal plate & window glass
+      const door = this.createSolidDoor(isRight, bodyMat, trimMat, glassMat, liveryMat);
+      this.chassisMainGroup.add(door);
 
-      // Inner wheel well liner
-      const liner = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.88), trimMat);
-      liner.position.set(fx * 0.95, 0.16, 1.35);
-      this.chassisMainGroup.add(liner);
-    }
+      // Solid front flared blister fender with circular wheel cutout & inner liner
+      const frontFender = this.createSolidFrontFender(isRight, bodyMat, trimMat);
+      this.chassisMainGroup.add(frontFender);
 
-    // Rear muscular widebody box flares (1,900mm overall rear width at X=±0.950m per CAD §3.2)
-    for (const rx of [-0.865, 0.865]) {
-      const rearArch = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.38, 1.18), bodyMat);
-      rearArch.position.set(rx, 0.21, -1.35);
-      rearArch.castShadow = true;
-      this.chassisMainGroup.add(rearArch);
+      // Solid upper front fender ledge bridging hood shutline to blister shoulder
+      const fenderLedge = this.createFrontFenderLedge(isRight, bodyMat);
+      this.chassisMainGroup.add(fenderLedge);
 
-      // Protective matte black stone-guard film on front face of blister flare
-      const stoneGuard = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.28, 0.02), trimMat);
-      stoneGuard.position.set(rx, 0.18, -0.75);
-      this.chassisMainGroup.add(stoneGuard);
-
-      // Rear arch brake duct / cooling vent cutout
-      const vent = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.18, 0.10), trimMat);
-      vent.position.set(rx * 1.02, 0.12, -0.80);
-      this.chassisMainGroup.add(vent);
+      // Solid rear widebody box flare hip with ram-air scoop & stone guard
+      const rearQuarter = this.createSolidRearQuarter(isRight, bodyMat, trimMat);
+      this.chassisMainGroup.add(rearQuarter);
     }
 
     // =========================================================================
     // 4. FRONT RALLY BUMPER, SPLITTER & ALUMINUM BASH PLATE
     // =========================================================================
-    // Main front bumper beam
-    const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(1.76, 0.30, 0.26), bodyMat);
-    frontBumper.position.set(0, 0.17, 2.02);
+    // Main front bumper beam with swept aerodynamic corner bevels
+    const frontBumper = this.createBeveledBumper(true, bodyMat);
     frontBumper.castShadow = true;
     this.frontBumperGroup.add(frontBumper);
 
@@ -1940,6 +3256,13 @@ export class CustomRallyVehicle {
     const frontSplitter = new THREE.Mesh(new THREE.BoxGeometry(1.78, 0.05, 0.36), trimMat);
     frontSplitter.position.set(0, 0.01, 2.06);
     this.frontBumperGroup.add(frontSplitter);
+
+    // Twin Alpine white racing stripes on front splitter lip
+    for (const sx of [-1, 1]) {
+      const lipStripe = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.01, 0.22), liveryMat);
+      lipStripe.position.set(sx * 0.14, 0.038, 2.06);
+      this.frontBumperGroup.add(lipStripe);
+    }
 
     // Aerodynamic front dive planes / canards & splitter support turnbuckles
     const strutMat = new THREE.MeshStandardMaterial({ color: 0xd4d4d8, roughness: 0.3, metalness: 0.8 });
@@ -1965,13 +3288,25 @@ export class CustomRallyVehicle {
 
     // Front center radiator intake air dam with aluminum heat exchanger core (CAD §1.2)
     const radiatorGrille = new THREE.Mesh(new THREE.BoxGeometry(1.15, 0.16, 0.06), exhaustBoreMat);
-    radiatorGrille.position.set(0, 0.13, 2.155);
+    radiatorGrille.position.set(0, 0.13, 2.04);
     this.frontBumperGroup.add(radiatorGrille);
+
+    // Red APEX center badge on front grille
+    const badgeMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3, metalness: 0.5 });
+    const apexBadge = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.045, 0.02), badgeMat);
+    apexBadge.position.set(0, 0.24, 2.145);
+    this.frontBumperGroup.add(apexBadge);
+
+    // White stencil APEX plate on lower intake
+    const stencilMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+    const stencilPlate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.06, 0.02), stencilMat);
+    stencilPlate.position.set(0, 0.05, 2.135);
+    this.frontBumperGroup.add(stencilPlate);
 
     // Aluminum radiator cooling core behind grille mesh
     const radCoreMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.4, metalness: 0.8, flatShading: true });
     const radCore = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.13, 0.02), radCoreMat);
-    radCore.position.set(0, 0.13, 2.13);
+    radCore.position.set(0, 0.13, 2.02);
     this.frontBumperGroup.add(radCore);
 
     // Aluminum underbody bash / skid plate
@@ -1988,7 +3323,16 @@ export class CustomRallyVehicle {
     towLoop.position.set(0.48, 0.04, 2.18);
     this.frontBumperGroup.add(towLoop);
 
-    // Quad front rally pod driving lamps (centered cluster: x = -0.30, -0.10, +0.10, +0.30)
+    // Quad front rally pod driving lamps with yellow halogen lenses & protective stone guards
+    const yellowHalogenMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: new THREE.Color(0xfacc15),
+      emissiveIntensity: 0.85,
+      roughness: 0.2,
+      metalness: 0.1,
+      flatShading: true,
+    });
+
     for (let i = -1.5; i <= 1.5; i += 1.0) {
       const px = i * 0.20; // 0.20 spacing creates a compact rally pod cluster
       const lampHousing = new THREE.Mesh(
@@ -2001,25 +3345,47 @@ export class CustomRallyVehicle {
 
       const lampLens = new THREE.Mesh(
         new THREE.CylinderGeometry(0.088, 0.088, 0.02, 16),
-        new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          emissive: 0xffffff,
-          emissiveIntensity: 0.65,
-          flatShading: true,
-        })
+        yellowHalogenMat
       );
       lampLens.rotateX(Math.PI / 2);
       lampLens.position.set(px, 0.24, 2.14);
       this.frontBumperGroup.add(lampLens);
+
+      // Stone guard cross-bars over lens
+      const barH = new THREE.Mesh(new THREE.BoxGeometry(0.176, 0.012, 0.008), trimMat);
+      barH.position.set(px, 0.24, 2.152);
+      this.frontBumperGroup.add(barH);
+
+      const barV = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.176, 0.008), trimMat);
+      barV.position.set(px, 0.24, 2.152);
+      this.frontBumperGroup.add(barV);
     }
 
     // Outer Headlamp Protective Bezels & Amber Turn Indicators (CAD Chapter 1)
+    const headlampLensMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      emissive: new THREE.Color(0xf8fafc),
+      emissiveIntensity: 0.9,
+      roughness: 0.1,
+      metalness: 0.9,
+    });
     for (const lx of [-0.55, 0.55]) {
       const isRight = lx > 0;
       // Matte black aerodynamic headlamp bezel frame
       const bezel = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.15, 0.03), trimMat);
       bezel.position.set(lx, 0.24, 2.138);
       this.frontBumperGroup.add(bezel);
+
+      // Circular projector headlamp lens inside bezel
+      const lampRing = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.02, 16), trimMat);
+      lampRing.rotateX(Math.PI / 2);
+      lampRing.position.set(lx, 0.24, 2.145);
+      this.frontBumperGroup.add(lampRing);
+
+      const lampBulb = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.022, 16), headlampLensMat);
+      lampBulb.rotateX(Math.PI / 2);
+      lampBulb.position.set(lx, 0.24, 2.15);
+      this.frontBumperGroup.add(lampBulb);
 
       // Amber corner indicator lamp
       const indicator = new THREE.Mesh(
@@ -2033,10 +3399,8 @@ export class CustomRallyVehicle {
     // =========================================================================
     // 5. REAR RALLY BUMPER, DIFFUSER & DUAL EXHAUST PIPES
     // =========================================================================
-    // Rear bumper beam
-    const rearBumper = new THREE.Mesh(new THREE.BoxGeometry(1.74, 0.30, 0.26), bodyMat);
-    rearBumper.position.set(0, 0.17, -2.00);
-    rearBumper.castShadow = true;
+    // Rear bumper beam with swept corner bevels
+    const rearBumper = this.createBeveledBumper(false, bodyMat);
     this.chassisMainGroup.add(rearBumper);
 
     // Lower rear diffuser tray
@@ -2187,18 +3551,16 @@ export class CustomRallyVehicle {
     ducktailLip.rotation.x = -0.25;
     this.chassisMainGroup.add(ducktailLip);
 
-    // Individual heat shield plates flanking each exhaust tip (symmetric ±0.35)
-    for (const ex of [-0.35, 0.35]) {
-      const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 0.11), bashPlateMat);
-      heatShield.position.set(ex, 0.05, -2.132);
-      heatShield.rotation.y = Math.PI;
-      this.chassisMainGroup.add(heatShield);
-    }
+    // Stainless steel heat shield above dual exhaust outlets on right side (CAD §3.2)
+    const heatShield = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.12), bashPlateMat);
+    heatShield.position.set(0.34, 0.05, -2.132);
+    heatShield.rotation.y = Math.PI;
+    this.chassisMainGroup.add(heatShield);
 
-    // DUAL EXHAUST PIPES (Polished stainless steel tailpipes) — symmetric ±0.35
-    for (const ex of [-0.35, 0.35]) {
+    // DUAL EXHAUST PIPES (Twin polished stainless steel tailpipes on right side @ X=0.35m)
+    for (const ex of [0.28, 0.40]) {
       const exhaustPipe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.065, 0.065, 0.24, 16),
+        new THREE.CylinderGeometry(0.055, 0.055, 0.24, 16),
         exhaustMat
       );
       exhaustPipe.rotateX(Math.PI / 2);
@@ -2207,7 +3569,7 @@ export class CustomRallyVehicle {
 
       // Dark soot interior bore
       const bore = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.05, 0.05, 0.05, 16),
+        new THREE.CylinderGeometry(0.042, 0.042, 0.05, 16),
         exhaustBoreMat
       );
       bore.rotateX(Math.PI / 2);
@@ -2220,7 +3582,7 @@ export class CustomRallyVehicle {
         roughness: 0.25,
         metalness: 0.85,
       });
-      const tiRing = new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.03, 16), tiMat);
+      const tiRing = new THREE.Mesh(new THREE.CylinderGeometry(0.058, 0.058, 0.03, 16), tiMat);
       tiRing.rotateX(Math.PI / 2);
       tiRing.position.set(ex, -0.04, -2.21);
       this.chassisMainGroup.add(tiRing);
@@ -2266,76 +3628,164 @@ export class CustomRallyVehicle {
     // =========================================================================
     // 6. REAR SPOILER WING ON TWIN SWEPT-BACK PYLONS (CAD §3.2)
     // =========================================================================
-    // Dual aerodynamic pylons (mounted at X=±0.420m per CAD spec §3.2)
+    // Dual aerodynamic swept pylons (mounted securely at X=±0.420m to bootlid hardpoints)
     for (const px of [-0.42, 0.42]) {
-      const pylon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.36, 0.22), trimMat);
-      pylon.position.set(px, 0.70, -1.82);
-      pylon.rotation.x = 0.14; // Swept back
+      const pylon = this.createSweptPylon(px, trimMat);
       this.rearWingGroup.add(pylon);
 
       // Mid-chord support brace between blade and pylon body
-      const midBrace = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.09, 0.04), trimMat);
-      midBrace.position.set(px, 0.82, -1.95);
+      const midBrace = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.07, 0.04), trimMat);
+      midBrace.position.set(px, 0.84, -2.00);
       this.rearWingGroup.add(midBrace);
     }
 
-    // High-mounted contoured aerodynamic wing blade (raised to y=0.87, width 1,420mm per CAD §3.2)
-    const wingBlade = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.05, 0.44), trimMat);
-    wingBlade.position.set(0, 0.87, -1.88);
-    wingBlade.rotation.x = -0.04; // Slight aerodynamic pitch
-    wingBlade.castShadow = true;
+    // High-mounted contoured aerodynamic aerofoil wing blade (span 1,420mm, chord 0.40m, Z=-1.85 to -2.25m, pitch -5 deg)
+    const wingBlade = this.createContouredWingBlade(trimMat);
     this.rearWingGroup.add(wingBlade);
 
-    // Trailing edge Gurney flap wickerbill (raised to y=0.905, width 1,420mm per CAD §3.2)
-    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.03, 0.02), trimMat);
-    gurneyFlap.position.set(0, 0.905, -2.09);
+    // Trailing edge Gurney flap wickerbill (width 1,420mm, height 25mm at Z=-2.25m)
+    const gurneyFlap = new THREE.Mesh(new THREE.BoxGeometry(1.42, 0.025, 0.015), trimMat);
+    gurneyFlap.position.set(0, 0.885, -2.250);
     this.rearWingGroup.add(gurneyFlap);
 
-    // Vertical aerodynamic wing endplates (mounted at wing blade tips X=±0.710m)
+    // Conformal curved stripe ribbons along the aerofoil camber and Gurney flap (matching reference blueprint)
+    const createWingStripeRibbon = (centerX: number): THREE.Mesh => {
+      const chord = 0.400;
+      const zLeading = -1.850;
+      const pitchRad = -5.0 * (Math.PI / 180.0);
+      const halfW = 0.06; // width 0.12m
+      const nChord = 10;
+      const positions: number[] = [];
+      const uvs: number[] = [];
+      const indices: number[] = [];
+
+      for (let j = 0; j <= nChord; j++) {
+        const s = j / nChord;
+        const zLocal = -s * chord * Math.cos(pitchRad);
+        const zWorld = zLeading + zLocal;
+        const yPitch = -s * chord * Math.sin(pitchRad);
+        const camber = 0.045 * (4 * s * (1 - s));
+        const thickness = 0.040 * (4 * s * (1 - s));
+        const yUpper = 0.880 + yPitch + camber + thickness * 0.5 + 0.003;
+
+        positions.push(centerX - halfW, yUpper, zWorld); uvs.push(0, s);
+        positions.push(centerX + halfW, yUpper, zWorld); uvs.push(1, s);
+      }
+
+      for (let j = 0; j < nChord; j++) {
+        const s0 = j * 2;
+        const s1 = (j + 1) * 2;
+        indices.push(s0 + 0, s1 + 1, s1 + 0);
+        indices.push(s0 + 0, s0 + 1, s1 + 1);
+      }
+
+      const geom = new THREE.BufferGeometry();
+      geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      geom.setIndex(indices);
+      geom.computeVertexNormals();
+
+      return new THREE.Mesh(geom, liveryMat);
+    };
+
+    for (const sx of [-0.10, 0.10]) {
+      const wingStripe = createWingStripeRibbon(sx);
+      this.rearWingGroup.add(wingStripe);
+
+      // Gurney flap vertical stripe facet at Z=-2.250m
+      const gurneyStripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.12, 0.026, 0.016),
+        liveryMat
+      );
+      gurneyStripe.position.set(sx, 0.886, -2.250);
+      this.rearWingGroup.add(gurneyStripe);
+    }
+
+    // Vertical aerodynamic wing endplates (swept leading edge flowing to haunches, tips at X=±0.710m)
     for (const ex of [-0.71, 0.71]) {
-      const endplate = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.24, 0.48), trimMat);
-      endplate.position.set(ex, 0.79, -1.88);
+      const endplate = this.createWingEndplate(ex, trimMat);
       this.rearWingGroup.add(endplate);
     }
 
     // =========================================================================
     // 7. TAILLIGHT CLUSTERS, GLOW QUADS & "APEX RALLY" LICENSE PLATE
     // =========================================================================
-    // Left cluster
-    const tlRedL = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
-    tlRedL.position.set(-0.55, 0.30, -2.13);
-    this.chassisMainGroup.add(tlRedL);
+    // Full-width black rear honeycomb mesh panel with bold white "APEX" logotype (CAD §3.1)
+    const rearPanelCanvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+    let rearPanelTex: THREE.CanvasTexture | null = null;
+    if (rearPanelCanvas) {
+      rearPanelCanvas.width = 512;
+      rearPanelCanvas.height = 128;
+      const rctx = rearPanelCanvas.getContext('2d');
+      if (rctx) {
+        rctx.fillStyle = '#0f172a';
+        rctx.fillRect(0, 0, 512, 128);
+        rctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+        rctx.lineWidth = 2;
+        for (let x = 0; x < 512; x += 16) {
+          rctx.beginPath();
+          rctx.moveTo(x, 0);
+          rctx.lineTo(x, 128);
+          rctx.stroke();
+        }
+        rctx.fillStyle = '#f8fafc';
+        rctx.font = '900 48px sans-serif';
+        rctx.textAlign = 'center';
+        rctx.textBaseline = 'middle';
+        rctx.fillText('APEX', 256, 64);
+        rearPanelTex = new THREE.CanvasTexture(rearPanelCanvas);
+      }
+    }
+    const rearPanelMat = rearPanelTex
+      ? new THREE.MeshBasicMaterial({ map: rearPanelTex })
+      : trimMat;
+    const rearPanelMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.44, 0.24), rearPanelMat);
+    rearPanelMesh.position.set(0, 0.28, -2.132);
+    rearPanelMesh.rotation.y = Math.PI;
+    this.chassisMainGroup.add(rearPanelMesh);
 
-    const tlAmberL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
-    tlAmberL.position.set(-0.63, 0.19, -2.13);
-    this.chassisMainGroup.add(tlAmberL);
+    // Twin circular taillight clusters (amber turn ring + glowing red brake lamp, CAD §3.1)
+    for (const lx of [-0.58, 0.58]) {
+      // Outer amber turn ring
+      const tlAmber = new THREE.Mesh(new THREE.TorusGeometry(0.072, 0.015, 8, 24), amberLightMat);
+      tlAmber.position.set(lx, 0.28, -2.138);
+      this.chassisMainGroup.add(tlAmber);
 
-    const tlWhiteL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
-    tlWhiteL.position.set(-0.47, 0.19, -2.13);
-    this.chassisMainGroup.add(tlWhiteL);
+      // Inner glowing red circular brake light
+      const tlRed = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.02, 24), this.brakeLightMat);
+      tlRed.rotateX(Math.PI / 2);
+      tlRed.position.set(lx, 0.28, -2.138);
+      this.chassisMainGroup.add(tlRed);
+    }
 
-    // Right cluster
-    const tlRedR = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.10, 0.05), this.brakeLightMat);
-    tlRedR.position.set(0.55, 0.30, -2.13);
-    this.chassisMainGroup.add(tlRedR);
+    // Inner reverse lamps
+    for (const rx of [-0.42, 0.42]) {
+      const tlWhite = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.02, 16), whiteLightMat);
+      tlWhite.rotateX(Math.PI / 2);
+      tlWhite.position.set(rx, 0.28, -2.138);
+      this.chassisMainGroup.add(tlWhite);
+    }
 
-    const tlAmberR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), amberLightMat);
-    tlAmberR.position.set(0.63, 0.19, -2.13);
-    this.chassisMainGroup.add(tlAmberR);
-
-    const tlWhiteR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.08, 0.05), whiteLightMat);
-    tlWhiteR.position.set(0.47, 0.19, -2.13);
-    this.chassisMainGroup.add(tlWhiteR);
+    // Vertical cooling louvers on outer rear bumper flanks (CAD §3.4)
+    for (const bx of [-0.78, 0.78]) {
+      for (let v = 0; v < 4; v++) {
+        const vz = -2.13;
+        const vx = bx + (bx > 0 ? -v * 0.035 : v * 0.035);
+        const louver = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.12, 0.01), trimMat);
+        louver.position.set(vx, 0.18, vz);
+        this.chassisMainGroup.add(louver);
+      }
+    }
 
     // Glow quads behind each brake light cluster
     const glowGeom = new THREE.PlaneGeometry(0.42, 0.18);
     const glowL = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
-    glowL.position.set(-0.55, 0.30, -2.132);
+    glowL.position.set(-0.58, 0.28, -2.132);
     glowL.rotation.y = Math.PI;
     this.chassisMainGroup.add(glowL);
 
     const glowR = new THREE.Mesh(glowGeom, this.brakeLightGlowMat);
-    glowR.position.set(0.55, 0.30, -2.132);
+    glowR.position.set(0.58, 0.28, -2.132);
     glowR.rotation.y = Math.PI;
     this.chassisMainGroup.add(glowR);
 

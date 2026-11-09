@@ -186,9 +186,9 @@ export class CockpitController {
     firewall.position.set(0, 0.27, 0.58);
     this.group.add(firewall);
 
-    // 3. Interior roof headliner
-    const headliner = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.02, 0.94), floorMat);
-    headliner.position.set(0, 0.88, -0.18);
+    // 3. Interior roof headliner (lowered to Y=0.80m, top at Y=0.808m <= 0.81m, recessed inside crowned roof)
+    const headliner = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.016, 0.80), floorMat);
+    headliner.position.set(0, 0.80, -0.25);
     this.group.add(headliner);
 
     // 4. Interior door panels (driver and co-driver, from floor to window sill at y = 0.40)
@@ -226,12 +226,12 @@ export class CockpitController {
 
     // 6. Compact Rear-view Mirror (center top roof header)
     const mirrorStem = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, 0.05, 8), floorMat);
-    mirrorStem.position.set(0, 0.84, 0.26);
+    mirrorStem.position.set(0, 0.78, 0.20);
     mirrorStem.rotation.x = -0.35;
     this.group.add(mirrorStem);
 
     const mirrorHousing = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.045, 0.025), doorMat);
-    mirrorHousing.position.set(0, 0.815, 0.27);
+    mirrorHousing.position.set(0, 0.755, 0.21);
     mirrorHousing.rotation.y = -0.12; // Angled slightly toward driver
     this.group.add(mirrorHousing);
 
@@ -262,7 +262,7 @@ export class CockpitController {
       map: bannerTex,
     });
     const visorBanner = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.045), bannerMat);
-    visorBanner.position.set(0, 0.855, 0.24);
+    visorBanner.position.set(0, 0.795, 0.18);
     visorBanner.rotation.x = -0.68;
     this.group.add(visorBanner);
 
@@ -343,8 +343,8 @@ export class CockpitController {
 
     // A. Main B-Pillar Hoop (behind seats at z = -0.46)
     const bLeft = new THREE.Vector3(-0.58, 0.20, -0.46);
-    const bTopLeft = new THREE.Vector3(-0.56, 0.86, -0.46);
-    const bTopRight = new THREE.Vector3(0.56, 0.86, -0.46);
+    const bTopLeft = new THREE.Vector3(-0.54, 0.805, -0.46);
+    const bTopRight = new THREE.Vector3(0.54, 0.805, -0.46);
     const bRight = new THREE.Vector3(0.58, 0.20, -0.46);
 
     addTube(bLeft, bTopLeft);
@@ -355,8 +355,8 @@ export class CockpitController {
     addTube(new THREE.Vector3(-0.57, 0.48, -0.46), new THREE.Vector3(0.57, 0.48, -0.46));
 
     // B. Roof Longitudinal Bars (B-pillar to A-pillar header)
-    const aTopLeft = new THREE.Vector3(-0.56, 0.86, 0.20);
-    const aTopRight = new THREE.Vector3(0.56, 0.86, 0.20);
+    const aTopLeft = new THREE.Vector3(-0.54, 0.805, 0.18);
+    const aTopRight = new THREE.Vector3(0.54, 0.805, 0.18);
 
     addTube(bTopLeft, aTopLeft);
     addTube(bTopRight, aTopRight);
@@ -366,8 +366,8 @@ export class CockpitController {
 
     // Diagonal Roof / Header Brace with Slender Protective Foam & Safety Wraps (WRC Style)
     // Pressed flat against the ceiling on the passenger side — entirely out of the driver's forward sightline.
-    const diagStart = new THREE.Vector3(0.06, 0.898, -0.42);
-    const diagEnd = new THREE.Vector3(-0.54, 0.898, 0.18);
+    const diagStart = new THREE.Vector3(0.06, 0.805, -0.42);
+    const diagEnd = new THREE.Vector3(-0.52, 0.805, 0.16);
     const diagDir = diagEnd.clone().sub(diagStart);
     const diagLen = diagDir.length();
     const diagMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, diagLen, 8), foamMat);
@@ -393,14 +393,14 @@ export class CockpitController {
     // Welded Corner Gusset Plates with Punched Dimple Die Lightening Holes at A-Pillar / Header Junction
     for (const gx of [-0.55, 0.55]) {
       const gusset = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.06, 0.06), gussetMat);
-      gusset.position.set(gx, 0.82, 0.22);
+      gusset.position.set(gx > 0 ? 0.53 : -0.53, 0.77, 0.18);
       this.group.add(gusset);
 
       // Punched dimple lightening holes through each gusset plate
       const dimpleHoleMat = new THREE.MeshBasicMaterial({ color: 0x18181b });
       for (const hy of [-0.014, 0.014]) {
         const hole = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.008, 8), dimpleHoleMat);
-        hole.position.set(gx, 0.82 + hy, 0.22);
+        hole.position.set(gx > 0 ? 0.53 : -0.53, 0.77 + hy, 0.18);
         hole.rotation.z = Math.PI / 2;
         this.group.add(hole);
       }

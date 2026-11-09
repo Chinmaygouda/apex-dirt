@@ -130,7 +130,11 @@ async function initGame() {
   // 9b. Multi-View Vehicle Inspection Controller (6 CAD Primary Viewpoints & Dedicated Studio Lighting)
   const inspectionController = new VehicleInspectionController(scene);
   inspectionController.setGroundObject(provingGround.group);
-  hud.onToggleInspection = () => inspectionController.toggle();
+  inspectionController.setVehicle(vehicle);
+  hud.onToggleInspection = () => {
+    vehicle.setCockpitViewMode(false);
+    inspectionController.toggle(undefined, vehicle);
+  };
   hud.onSelectInspectionPreset = (idx) => inspectionController.setPresetByIndex(idx);
   hud.onCycleInspectionPreset = (fwd) => inspectionController.cyclePreset(fwd);
   hud.onExitInspection = () => inspectionController.exit();
@@ -236,9 +240,14 @@ async function initGame() {
   (window as any).collisionDispatcher = collisionDispatcher;
   (window as any).inspectionController = inspectionController;
   (window as any).setInspectionView = (view: any) => inspectionController.setPreset(view, true);
-  (window as any).toggleInspection = (force?: boolean) => inspectionController.toggle(force);
+  (window as any).toggleInspection = (force?: boolean) => {
+    vehicle.setCockpitViewMode(false);
+    return inspectionController.toggle(force, vehicle);
+  };
   (window as any).scene = scene;
   (window as any).physics = physics;
+  (window as any).hud = hud;
+  (window as any).telemetryHud = hud;
 
   if (window.location.search.includes('test_a=true')) {
     setTimeout(() => {
@@ -302,7 +311,8 @@ async function initGame() {
     let inputs = inputManager.update();
 
     if (inputs.inspectToggle) {
-      inspectionController.toggle();
+      vehicle.setCockpitViewMode(false);
+      inspectionController.toggle(undefined, vehicle);
     }
     if (inputs.inspectExit && inspectionController.isActive) {
       inspectionController.exit();

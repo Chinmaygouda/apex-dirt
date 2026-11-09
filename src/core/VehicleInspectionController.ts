@@ -27,10 +27,10 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'FRONT ELEVATION [1]',
     plate: 'Plate 01: Front Elevation Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 1',
-    offset: new THREE.Vector3(0.0, 0.35, 5.20),
+    offset: new THREE.Vector3(0.0, 0.30, 7.80),
     targetOffset: new THREE.Vector3(0.0, 0.30, 0.0),
     upVector: new THREE.Vector3(0.0, 1.0, 0.0),
-    fov: 38,
+    fov: 26,
     specs: [
       { label: 'Overall Flared Width', value: '1,880 mm (Composite Blister Arches)' },
       { label: 'Front Track Width (TF)', value: '1,860 mm (Center-to-Center @ X=±0.930m)' },
@@ -46,10 +46,10 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'SIDE PROFILE [2]',
     plate: 'Plate 02: Side Profile Elevation Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 2',
-    offset: new THREE.Vector3(-5.80, 0.40, 0.0),
+    offset: new THREE.Vector3(-8.50, 0.30, 0.0),
     targetOffset: new THREE.Vector3(0.0, 0.30, 0.0),
     upVector: new THREE.Vector3(0.0, 1.0, 0.0),
-    fov: 38,
+    fov: 26,
     specs: [
       { label: 'Overall Length (L)', value: '4,200 mm (Splitter to Aerofoil)' },
       { label: 'Wheelbase (WB)', value: '2,700 mm (Front Hub to Rear Hub @ Z=±1.350m)' },
@@ -65,10 +65,10 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'REAR ELEVATION [3]',
     plate: 'Plate 03: Rear Elevation Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 3',
-    offset: new THREE.Vector3(0.0, 0.45, -5.40),
-    targetOffset: new THREE.Vector3(0.0, 0.35, 0.0),
+    offset: new THREE.Vector3(0.0, 0.30, -7.80),
+    targetOffset: new THREE.Vector3(0.0, 0.30, 0.0),
     upVector: new THREE.Vector3(0.0, 1.0, 0.0),
-    fov: 38,
+    fov: 26,
     specs: [
       { label: 'Rear Track Width (TR)', value: '1,900 mm (+40mm wider than front)' },
       { label: 'High-Mount Aerofoil', value: '1,420 mm Width, Dual Pylons @ X=±0.42m' },
@@ -84,10 +84,10 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'TOP PLAN [4]',
     plate: 'Plate 05: Top Plan View Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 5',
-    offset: new THREE.Vector3(0.0, 6.20, 0.0),
-    targetOffset: new THREE.Vector3(0.0, 0.30, 0.0),
+    offset: new THREE.Vector3(0.0, 8.20, -0.15),
+    targetOffset: new THREE.Vector3(0.0, 0.30, -0.15),
     upVector: new THREE.Vector3(0.0, 0.0, 1.0), // +Z points UP on screen
-    fov: 40,
+    fov: 45,
     specs: [
       { label: 'Vehicle Envelope', value: '4,200 mm L x 1,880 mm W' },
       { label: 'Twin Hood Louvers', value: 'Two 420 x 280 mm Cooling Banks @ Z=+0.95m' },
@@ -103,10 +103,10 @@ export const INSPECTION_PRESETS: Record<InspectionView, InspectionPresetConfig> 
     title: 'BOTTOM UNDERBODY [5]',
     plate: 'Plate 04: Underbody Chassis Plan Blueprint',
     cadChapter: 'APX-SPEC-FINAL-001 Chapter 4',
-    offset: new THREE.Vector3(0.0, -5.20, 0.0),
-    targetOffset: new THREE.Vector3(0.0, 0.10, 0.0),
+    offset: new THREE.Vector3(0.0, -7.50, -0.05),
+    targetOffset: new THREE.Vector3(0.0, 0.10, -0.05),
     upVector: new THREE.Vector3(0.0, 0.0, 1.0), // +Z points UP on screen
-    fov: 40,
+    fov: 45,
     specs: [
       { label: 'Component A (Front)', value: '8.0mm 5083-H111 Al Sump Guard (Z=+1.95 to +0.80m)' },
       { label: 'Component B (Mid)', value: '4.5mm Carbon-Kevlar Undertray (Z=+0.80 to -0.90m)' },
@@ -163,6 +163,9 @@ export class VehicleInspectionController {
   // Reference to ground object for occlusion hiding
   private groundObject: THREE.Object3D | null = null;
   private groundWasVisible = true;
+
+  // Reference to vehicle for exterior mesh visibility management
+  private targetVehicle: CustomRallyVehicle | null = null;
 
   // Transition and camera math helpers
   private tempPos = new THREE.Vector3();
@@ -235,19 +238,29 @@ export class VehicleInspectionController {
     }
   }
 
-  public toggle(force?: boolean): boolean {
+  public setVehicle(vehicle: CustomRallyVehicle | null): void {
+    this.targetVehicle = vehicle;
+  }
+
+  public toggle(force?: boolean, vehicle?: CustomRallyVehicle): boolean {
     const nextState = force !== undefined ? force : !this.isActive;
     if (nextState) {
-      this.enter();
+      this.enter(vehicle);
     } else {
       this.exit();
     }
     return this.isActive;
   }
 
-  public enter(): void {
+  public enter(vehicle?: CustomRallyVehicle): void {
     if (this.isActive) return;
     this.isActive = true;
+    if (vehicle) {
+      this.targetVehicle = vehicle;
+    }
+    if (this.targetVehicle) {
+      this.targetVehicle.setCockpitViewMode(false);
+    }
     this.lightingRig.visible = true;
     this.isTransitioning = true;
     this.applyOcclusion();
@@ -295,19 +308,22 @@ export class VehicleInspectionController {
       if (this.isActive && this.activeView === 'UNDERBODY') {
         this.groundObject.visible = false;
       } else {
-        this.groundObject.visible = true;
+        this.groundObject.visible = this.groundWasVisible;
       }
     }
   }
 
   private restoreOcclusion(): void {
     if (this.groundObject) {
-      this.groundObject.visible = true;
+      this.groundObject.visible = this.groundWasVisible;
     }
   }
 
   public update(camera: THREE.PerspectiveCamera, vehicle: CustomRallyVehicle, dt: number): void {
     if (!this.isActive || !vehicle.chassisMesh) return;
+
+    this.targetVehicle = vehicle;
+    vehicle.setCockpitViewMode(false);
 
     const carPos = vehicle.chassisMesh.position;
     const carQuat = vehicle.chassisMesh.quaternion;

@@ -884,3 +884,95 @@ registerTest(1, 'T1_R7_07', 'R7: Inspection', 'CAD Master specification presets 
   expect(iso.plate).toContain('Plate 06');
   expect(iso.specs.some(s => s.value.includes('T45'))).toBe(true);
 });
+
+registerTest(1, 'T1_R7_08', 'R7: Inspection', 'TOP and UNDERBODY viewpoints frame vehicle mesh vertices strictly within NDC bounds [-0.85, +0.85] with vertical span >= 5.8m', async () => {
+  const harness = await createSimulationHarness();
+  const scene = new THREE.Scene();
+  const controller = new VehicleInspectionController(scene);
+  const camera = new THREE.PerspectiveCamera(45, 16 / 9, 0.1, 1000);
+
+  controller.enter();
+
+  // Extract all vertices from vehicle chassis mesh
+  const vertices: THREE.Vector3[] = [];
+  harness.vehicle.chassisMesh.traverse(child => {
+    if ((child as any).isMesh && (child as THREE.Mesh).geometry) {
+      const geom = (child as THREE.Mesh).geometry;
+      const pos = geom.getAttribute('position');
+      if (pos) {
+        for (let i = 0; i < pos.count; i++) {
+          const vert = new THREE.Vector3().fromBufferAttribute(pos, i);
+          child.localToWorld(vert);
+          vertices.push(vert);
+        }
+      }
+    }
+  });
+
+  expect(vertices.length).toBeGreaterThan(1000);
+
+  for (const view of ['TOP', 'UNDERBODY'] as const) {
+    controller.setPreset(view, true);
+    controller.update(camera, harness.vehicle, 0.05);
+
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+
+    const config = INSPECTION_PRESETS[view];
+    const dist = Math.abs(config.offset.y - config.targetOffset.y);
+    const halfFovRad = THREE.MathUtils.degToRad(config.fov / 2);
+    const verticalSpan = 2 * dist * Math.tan(halfFovRad);
+    expect(verticalSpan).toBeGreaterThanOrEqual(5.8);
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+
+    for (const vert of vertices) {
+      const ndc = vert.clone().project(camera);
+      if (ndc.x < minX) minX = ndc.x;
+      if (ndc.x > maxX) maxX = ndc.x;
+      if (ndc.y < minY) minY = ndc.y;
+      if (ndc.y > maxY) maxY = ndc.y;
+    }
+
+    // Must be strictly within [-0.85, +0.85]
+    expect(minX).toBeGreaterThanOrEqual(-0.85);
+    expect(maxX).toBeLessThanOrEqual(0.85);
+    expect(minY).toBeGreaterThanOrEqual(-0.85);
+    expect(maxY).toBeLessThanOrEqual(0.85);
+  }
+});
+
+registerTest(1, 'T1_R7_09', 'R7: Inspection', 'Entering and updating inspection mode restores all exterior cockpit-obscuring meshes to visible', async () => {
+  const harness = await createSimulationHarness();
+  const scene = new THREE.Scene();
+  const cameraManager = new CameraManager();
+  const controller = new VehicleInspectionController(scene);
+
+  // Cycle camera to COCKPIT_FPV and hide exterior obscuring meshes
+  cameraManager.cycleMode(); // CHASE -> COCKPIT_FPV
+  expect(cameraManager.currentMode).toBe('COCKPIT_FPV');
+  harness.vehicle.setCockpitViewMode(true);
+
+  const obscuringCount = harness.vehicle.cockpitObscuringMeshes.length;
+  expect(obscuringCount).toBeGreaterThan(0);
+  const visibleInCockpit = harness.vehicle.cockpitObscuringMeshes.filter(m => m.visible).length;
+  expect(visibleInCockpit).toBe(0);
+
+  // Enter inspection mode and update
+  controller.setVehicle(harness.vehicle);
+  controller.enter();
+  controller.update(cameraManager.camera, harness.vehicle, 0.016);
+
+  const visibleInInspection = harness.vehicle.cockpitObscuringMeshes.filter(m => m.visible).length;
+  expect(visibleInInspection).toBe(obscuringCount);
+
+  // Verify ground occlusion restoration respects initial state
+  const mockGround = new THREE.Group();
+  mockGround.visible = false;
+  controller.setGroundObject(mockGround);
+  controller.setPreset('UNDERBODY', true);
+  expect(mockGround.visible).toBe(false);
+  controller.exit();
+  expect(mockGround.visible).toBe(false); // Must restore groundWasVisible (false)
+});
